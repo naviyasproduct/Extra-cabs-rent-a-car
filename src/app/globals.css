@@ -124,6 +124,22 @@
 
   /* How far an overlapping card bites into the band above it. */
   --overlap: 3.5rem;
+
+  /* Home hero: the widest the stage holding the wordmark and the vehicles may
+     grow, expressed against the viewport HEIGHT rather than its width.
+     Everything else on the page is sized off width alone, which is right until
+     a screen is wide but short. A tablet in landscape, or a short laptop, then
+     gets a 5:2 vehicle band taller than half the screen, and the paragraph and
+     the button below it fall off the bottom.
+     The stage is a 5:2 frame, so a width of 125svh is a band exactly 50svh
+     tall. Both the stage and the wordmark are bounded by this one number, so
+     they shrink together and the composition is preserved rather than
+     rebalanced. On a phone, and on a laptop around 1080p, it never binds.
+     Lower it to make the hero smaller on short screens, raise it to let the
+     hero run taller.
+     svh, not dvh: it is the height with the browser toolbars showing, so the
+     hero is sized for the worst case and does not resize as the bar hides. */
+  --hero-cap: 125svh;
 }
 
 @media (min-width: 640px) {
@@ -286,6 +302,16 @@
     z-index: 10;
   }
 
+  /* The home hero stage: the wordmark, and the vehicles pulled up into it.
+     Full width, until the screen is too short to hold a 5:2 band at that
+     width, at which point --hero-cap bounds it and it centres. See the token
+     for why. Nothing else on the site is bounded by viewport height. */
+  .hero-stage {
+    width: 100%;
+    max-width: var(--hero-cap);
+    margin-inline: auto;
+  }
+
   /* Hairline rule that lines up with the grid rather than boxing content in.
      Used instead of borders so containers stay border-free. */
   .rule {
@@ -306,9 +332,19 @@
 
   /* The home page wordmark. Sized off the viewport so it always spans most of
      the shell, and set on a tight line height so the vehicles beneath it can
-     be pulled up into the letterforms without colliding with a descender. */
+     be pulled up into the letterforms without colliding with a descender.
+     The second term is the same 15.5%, but taken of the height-bounded stage
+     width (0.155 x --hero-cap) instead of the viewport width. Whichever is
+     smaller wins, so on a short screen the wordmark shrinks by exactly the
+     factor the vehicles below it do and the two stay in proportion. The
+     fallback keeps the clamp valid if this class is ever used outside the
+     hero, where --hero-cap is not in scope. */
   .display-hero {
-    font-size: clamp(3.25rem, 15.5vw, 11.5rem);
+    font-size: clamp(
+      3.25rem,
+      min(15.5vw, calc(0.155 * var(--hero-cap, 125svh))),
+      11.5rem
+    );
     text-transform: uppercase;
     letter-spacing: -0.035em;
     font-weight: 800;

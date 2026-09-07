@@ -910,6 +910,75 @@ The navbar's services dropdown was never affected: it is a `div` on
 **Verified** in the shipped stylesheet, not just the source, since the whole
 point is what the browser actually receives.
 
+### 2026-09-07 (fix) - Hero too big on tablets and short laptops
+
+Client viewed the site on a Galaxy Tab S7 in landscape: the hero image filled
+the screen and nothing below it was reachable.
+
+**Cause.** The hero was sized off viewport **width** only. The wordmark is
+`15.5vw` and the vehicle band is a 5:2 frame at full shell width, so its height
+is always 40% of the shell. That is fine on a screen whose height is
+proportionate to its width, and wrong on a wide but short one. On the tablet in
+landscape (about 1138x712 CSS) the band was 430px, 60% of the screen, and its
+bottom edge landed at 686px against a 712px fold. The paragraph and the button
+were below it, so the hero really did cover everything.
+
+**Fix.** One new token, `--hero-cap: 125svh` in `globals.css`, bounds the hero
+by screen height as well as width:
+
+- `.hero-stage` wraps the wordmark and the image, `max-width: var(--hero-cap)`,
+  centred. The stage is a 5:2 frame, so a width of `125svh` is a vehicle band
+  exactly `50svh` tall. It stays full width until that binds.
+- `.display-hero` now reads
+  `clamp(3.25rem, min(15.5vw, calc(0.155 * var(--hero-cap))), 11.5rem)`. The
+  second term is the same 15.5%, taken of the capped stage width instead of the
+  viewport width, so the wordmark shrinks by exactly the factor the vehicles do
+  and the two stay in proportion. The `var()` carries a fallback so the clamp
+  stays valid if the class is ever used outside the hero.
+
+**Why one number drives both.** Capping only the image would leave a wordmark
+sized for a screen the hero no longer fills, and the negative margin would pull
+the cars into the wrong part of the lettering. Tying both to `--hero-cap` means
+the composition is scaled, not rebalanced, and tuning the hero on short screens
+is a single edit.
+
+**Deliberately untouched:** the `-mt-4 sm:-mt-8 lg:-mt-12` overlap, the derived
+`object-position: 50% 62.6%` (it depends on the frame's aspect ratio, which has
+not changed, not on its size), and the section's top padding.
+
+`svh` not `dvh`, so the hero is sized for the worst case with the browser
+toolbars showing and does not resize as the address bar hides.
+
+**Measured, by mirroring the shipped CSS rather than eyeballing it.** Image
+height as a share of the screen, before to after:
+
+| Screen | Band height | Share of screen |
+| --- | --- | --- |
+| Phone portrait 390x730 | 140 to 140 | 19% (unchanged) |
+| Tab S7 portrait 712x1050 | 266 to 266 | 25% (unchanged) |
+| Tab S7 landscape 1138x712 | 430 to 356 | 60% to 50% |
+| Laptop 1366x768 | 486 to 315 | 77% to 50% |
+| Laptop 1080p 1920x950 | 486 to 475 | 51% to 50% |
+
+So **phones and tablet portrait are byte for byte unchanged**, which is what
+the client asked for, and a 1080p laptop moves by 2%, which keeps it as the
+reference the other sizes are being matched to. Landscape phones and 768px
+laptops were suffering the same fault and are fixed by the same token.
+
+**Verified**
+
+- `tsc` clean, build passes, 32 routes.
+- Read the **shipped** stylesheet, since a minifier can rewrite or drop a
+  `min()` nested in a `clamp()`. All three survive intact:
+  `--hero-cap:125svh`, `.hero-stage{width:100%;max-width:var(--hero-cap);
+  margin-inline:auto}` and the full `clamp(...min(15.5vw, calc(.155 *
+  var(--hero-cap,125svh)))...)`.
+- Served on :3117 and confirmed the rendered HTML wraps the `h1` and the image
+  frame in one `.hero-stage`, with the paragraph and the button left outside it
+  at full shell width. Server stopped.
+- Not seen in a real browser: there is still no browser tooling in this repo,
+  so the check was structural plus arithmetic. Worth a look on the tablet.
+
 ---
 
 ## 9. Working agreements
