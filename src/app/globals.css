@@ -207,6 +207,31 @@
     color: inherit;
   }
 
+  /* Dropdown options are drawn by the browser in a popup outside the page, and
+     they do not inherit a translucent background usefully: --color-field is
+     white at 8.5% opacity, which composites over the popup's own white ground
+     and leaves near-white text on near-white. Give the options an OPAQUE dark
+     surface and an explicit colour instead of relying on inheritance.
+
+     Covers every select on the site and in the panel, so no component has to
+     remember it. */
+  select option,
+  select optgroup {
+    background-color: var(--color-charcoal);
+    color: var(--color-ink);
+  }
+
+  select option:disabled {
+    color: var(--color-muted);
+  }
+
+  /* The highlighted row. Browsers vary in how much of this they honour; where
+     it is ignored the rule above still guarantees the text is readable. */
+  select option:checked {
+    background-color: var(--color-brand);
+    color: #fff;
+  }
+
   input[type="date"]::-webkit-calendar-picker-indicator,
   input[type="time"]::-webkit-calendar-picker-indicator {
     opacity: 0.45;

@@ -192,6 +192,13 @@ The whole visual language is three files: `src/app/globals.css`,
     toggles, chips and menu rows keep a fill because a control with no
     background and no border is invisible. Use these, never `bg-surface*`, for
     anything a person operates.
+  - **`select option` is styled globally in `globals.css` and must stay that
+    way.** `--color-field` is white at 8.5% opacity, and the browser draws the
+    option popup outside the page, compositing that translucent white over its
+    own white ground. With text inheriting near-white `--color-ink` that gave
+    1.17:1 contrast: completely invisible. Options are pinned to an **opaque**
+    `--color-charcoal` background, which is 17.17:1. Never give a `<select>` a
+    translucent background and expect the popup to inherit sensibly.
   - The navy `--color-contrast` survives only on buttons, badges and the scrim
     over destination photos. It is no longer used as a slab anywhere.
 - Type: `Barlow_Condensed` for display (uppercase), `Barlow` for body.
@@ -870,6 +877,38 @@ src/app/
 customer nav across all six panel screens and the sign-in page, while every
 public page still has navbar, footer, correct canonicals and its JSON-LD.
 `/nope` still returns a real 404.
+
+### 2026-09-07 (fix) - Invisible dropdown options
+
+Client reported white text on white in every dropdown, on the site and in the
+panel.
+
+**Cause.** Selects carry `bg-field`, which is `rgba(255, 255, 255, 0.085)`. The
+browser draws the option popup *outside the page*, so that translucent white
+composites over the popup's own white ground rather than over the black page.
+Text meanwhile inherited `--color-ink` (`#e9edf5`). Measured contrast:
+**1.17:1**, which is genuinely unreadable.
+
+**Fix.** One element-level rule in `globals.css`, so every select on the site
+and in the panel is covered without any component knowing about it:
+
+```css
+select option, select optgroup {
+  background-color: var(--color-charcoal);  /* opaque #05070c */
+  color: var(--color-ink);
+}
+select option:disabled { color: var(--color-muted); }
+select option:checked  { background-color: var(--color-brand); color: #fff; }
+```
+
+Contrast after: **17.17:1** normal, 6.01:1 disabled, 4.83:1 on the selected
+row. See the rule in section 5.
+
+The navbar's services dropdown was never affected: it is a `div` on
+`--color-overlay`, which is already opaque.
+
+**Verified** in the shipped stylesheet, not just the source, since the whole
+point is what the browser actually receives.
 
 ---
 
