@@ -13,10 +13,10 @@ const base =
 
 const variants: Record<Variant, string> = {
   primary: "bg-brand text-white hover:bg-brand-hover",
-  dark: "bg-ink text-white hover:bg-charcoal-soft",
-  outline: "bg-transparent text-ink ring-1 ring-inset ring-line hover:bg-surface-alt",
-  ghost: "bg-transparent text-ink hover:bg-surface-alt",
-  light: "bg-white text-ink hover:bg-surface-alt",
+  dark: "bg-contrast text-white hover:bg-charcoal-soft",
+  outline: "bg-transparent text-ink ring-1 ring-inset ring-line-strong hover:bg-field",
+  ghost: "bg-transparent text-ink hover:bg-field",
+  light: "bg-white text-charcoal hover:bg-ink",
 };
 
 const sizes: Record<Size, string> = {

@@ -4,14 +4,14 @@ import { cn } from "@/lib/utils";
 
 /* ---------------------------------------------------------------------------
    Form controls.
-   Controls are filled surfaces rather than outlined boxes — the site uses
+   Controls are filled surfaces rather than outlined boxes - the site uses
    tone changes instead of borders to separate things.
 --------------------------------------------------------------------------- */
 
 const controlBase =
-  "w-full rounded-(--radius-inner) bg-surface-alt px-4 text-base " +
+  "w-full rounded-(--radius-inner) bg-field px-4 text-base " +
   "text-ink placeholder:text-muted/70 transition-colors duration-200 " +
-  "hover:bg-line/60 focus:bg-surface-alt";
+  "hover:bg-field-hover focus:bg-field";
 
 export function FieldLabel({
   htmlFor,
@@ -107,13 +107,13 @@ export function CheckTile({
       aria-pressed={checked}
       className={cn(
         "flex w-full items-start gap-3 rounded-(--radius-inner) p-4 text-left transition-colors duration-200",
-        checked ? "bg-ink text-white" : "bg-surface-alt text-ink hover:bg-line/60",
+        checked ? "bg-brand text-white" : "bg-field text-ink hover:bg-field-hover",
       )}
     >
       <span
         className={cn(
-          "mt-0.5 grid size-5 shrink-0 place-items-center rounded-md transition-colors",
-          checked ? "bg-brand text-white" : "bg-white text-transparent",
+          "mt-0.5 grid size-5 shrink-0 place-items-center rounded-(--radius-chip) transition-colors",
+          checked ? "bg-brand text-white" : "bg-white/20 text-transparent",
         )}
         aria-hidden
       >
@@ -131,7 +131,7 @@ export function CheckTile({
         <span className="flex items-baseline justify-between gap-3">
           <span className="font-semibold">{title}</span>
           {meta ? (
-            <span className={cn("text-sm font-semibold", checked ? "text-white/70" : "text-brand")}>
+            <span className={cn("text-sm font-semibold", checked ? "text-white/70" : "text-brand-bright")}>
               {meta}
             </span>
           ) : null}

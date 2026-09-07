@@ -37,11 +37,14 @@ export function Grid({ as: Tag = "div", id, className, children }: ShellProps) {
 
 type Band = "paper" | "surface" | "alt" | "dark" | "none";
 
+/* The default band paints nothing. On a black page the background IS the
+   page, so a band only sets a colour when it genuinely wants a surface under
+   its content - otherwise the section floats straight on the black. */
 const bands: Record<Band, string> = {
-  paper: "bg-paper text-ink",
-  surface: "bg-surface text-ink",
-  alt: "bg-surface-alt text-ink",
-  dark: "bg-ink text-white",
+  paper: "text-ink",
+  surface: "text-ink",
+  alt: "text-ink",
+  dark: "text-ink",
   none: "",
 };
 
@@ -127,9 +130,9 @@ export function SectionHeader({
 type SlabTone = "surface" | "alt" | "dark" | "brand";
 
 const slabTones: Record<SlabTone, string> = {
-  surface: "bg-surface text-ink",
-  alt: "bg-surface-alt text-ink",
-  dark: "bg-ink text-white",
+  surface: "text-ink",
+  alt: "text-ink",
+  dark: "text-ink",
   brand: "bg-brand text-white",
 };
 
@@ -138,7 +141,7 @@ const slabTones: Record<SlabTone, string> = {
  *
  * This is how a section changes colour. Full-bleed bands were dropped because
  * a tone change running edge to edge reads as an accidental seam across the
- * page — you see the colour switch in the left and right margins. Containing
+ * page - you see the colour switch in the left and right margins. Containing
  * the change inside a rounded slab makes it look like a deliberate card on a
  * continuous background instead.
  */
@@ -166,9 +169,9 @@ export function Slab({
 type PanelTone = "surface" | "alt" | "dark" | "brand";
 
 const panelTones: Record<PanelTone, string> = {
-  surface: "bg-surface text-ink",
-  alt: "bg-surface-alt text-ink",
-  dark: "bg-ink text-white",
+  surface: "text-ink",
+  alt: "text-ink",
+  dark: "text-ink",
   brand: "bg-brand text-white",
 };
 

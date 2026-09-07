@@ -1,46 +1,84 @@
 @import "tailwindcss";
 
 /* ---------------------------------------------------------------------------
-   Extra Cabs & Rent a Cars — design tokens
-   Palette is lifted directly from the brand logo:
-     signal red   #E01B22  (the 3D "EXTRA" lettering)
-     deep maroon  #8E1420  (the Toyota C-HR body)
-     graphite     #101012  (the "CABS & RENT A CARS" lettering)
-     paper        #F6F4F1  (warm off-white, keeps the red from screaming)
-   No blues, no violets, no default framework greys.
+   Extra Cabs & Rent a Cars - design tokens (DARK)
+
+   The site runs on one theme: a true-black page with everything floating on it.
+
+     signal red   #E01B22  (the 3D "EXTRA" lettering) - kept for fills
+     hot red      #FF5B61  (the same red, lifted until it reads on black)
+     statement    #0F1A33  (deep navy slab - the loudest surface on the page)
+     page         #000000  (true black - never a soft charcoal)
+
+   Surfaces are translucent white over that black rather than opaque greys, so
+   a card is a lift off the page rather than a differently-coloured box stuck
+   onto it. Elevation runs UP from black: page -> surface -> surface-alt.
 --------------------------------------------------------------------------- */
 @theme {
-  /* Brand */
+  /* Brand. `brand` is the fill - white text sits on it. `brand-bright` is the
+     same red pushed up until it is legible as text against black. */
   --color-brand: #e01b22;
-  --color-brand-hover: #c1141b;
+  --color-brand-hover: #f5343b;
+  --color-brand-bright: #ff5b61;
   --color-brand-deep: #8e1420;
-  --color-brand-tint: #fdecec;
-  --color-brand-tint-strong: #f9d6d7;
+  --color-brand-tint: rgba(255, 58, 64, 0.14);
+  --color-brand-tint-strong: rgba(255, 58, 64, 0.26);
 
-  /* Neutrals — warm, never cold grey */
-  --color-ink: #101012;
-  --color-ink-soft: #3b3a3d;
-  --color-muted: #767370;
-  --color-line: #e6e1db;
-  --color-line-strong: #d8d1c8;
-  --color-paper: #f6f4f1;
-  --color-surface: #ffffff;
-  --color-surface-alt: #efeae4;
-  --color-charcoal: #17171a;
-  --color-charcoal-soft: #232327;
+  /* Neutrals - cool, never warm. Contrast-checked against #000. */
+  --color-ink: #e9edf5;
+  --color-ink-soft: #adb7c9;
+  --color-muted: #828d9f;
+  --color-line: rgba(150, 180, 255, 0.14);
+  --color-line-strong: rgba(150, 180, 255, 0.2);
+  --color-paper: #000000;
+
+  /* Content surfaces are FLAT. Cards, panels and section bands sit directly on
+     the black page and are separated by whitespace and hairline rules, not by
+     boxes. Kept as named tokens rather than deleted so the many `bg-surface`
+     utilities across the app stay valid and the decision lives in one place. */
+  --color-surface: transparent;
+  --color-surface-alt: transparent;
+
+  /* Controls are the exception. A text field, a toggle or a menu row with no
+     background and no border is invisible and untappable, so anything a person
+     operates keeps a fill even though nothing around it does. */
+  --color-field: rgba(255, 255, 255, 0.085);
+  --color-field-hover: rgba(255, 255, 255, 0.14);
+
+  /* Fleet tiles. A grid of vehicles needs each one to read as a separate
+     object, otherwise four cars in a row look like one strip of photos and
+     nobody can tell which name belongs to which car. This is the only content
+     surface that paints, and it exists for that reason. */
+  --color-tile: rgba(255, 255, 255, 0.055);
+  --color-tile-hover: rgba(255, 255, 255, 0.1);
+
+  /* The statement slab - what used to be the solid black band on white paper.
+     Inverted here into a deep navy so it still reads as the loudest surface
+     on the page instead of vanishing into it. */
+  --color-contrast: #0f1a33;
+  --color-charcoal: #05070c;
+  --color-charcoal-soft: #17253f;
+
+  /* Floating chrome (navbar, dropdowns, mobile sheet). Opaque enough that
+     page content never shows through while scrolling. */
+  --color-overlay: rgba(9, 12, 20, 0.88);
 
   /* Support accents (status only) */
-  --color-success: #1f7a4d;
-  --color-warning: #b26a00;
+  --color-success: #3ddc97;
+  --color-warning: #f0a92e;
 
   /* Type */
   --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
   --font-display: var(--font-display), "Barlow Condensed", ui-sans-serif, sans-serif;
 
-  /* Elevation — flat, neutral, no coloured glow anywhere */
-  --shadow-soft: 0 1px 2px rgba(16, 16, 18, 0.04), 0 8px 24px rgba(16, 16, 18, 0.06);
-  --shadow-lift: 0 2px 4px rgba(16, 16, 18, 0.05), 0 18px 40px rgba(16, 16, 18, 0.1);
-  --shadow-nav: 0 1px 2px rgba(16, 16, 18, 0.04), 0 10px 30px rgba(16, 16, 18, 0.08);
+  /* Elevation - on black a shadow cannot darken, so lift is carried by a
+     hairline of light along the edge plus a deep pool underneath. */
+  --shadow-soft: 0 1px 2px rgba(0, 0, 0, 0.7), 0 8px 24px rgba(0, 0, 0, 0.55);
+  --shadow-lift:
+    0 0 0 1px rgba(150, 180, 255, 0.09), 0 2px 6px rgba(0, 0, 0, 0.6),
+    0 20px 44px rgba(0, 0, 0, 0.7);
+  --shadow-nav:
+    0 0 0 1px rgba(150, 180, 255, 0.1), 0 12px 34px rgba(0, 0, 0, 0.75);
 
   --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
@@ -48,7 +86,7 @@
 /* ---------------------------------------------------------------------------
    THE GRID SYSTEM
    Every page on this site is built on the same three numbers. Do not invent
-   new ones in a component — reach for these instead, so sections lock to a
+   new ones in a component - reach for these instead, so sections lock to a
    shared vertical and horizontal rhythm instead of drifting apart.
 
      --shell     one container width, shared by every section
@@ -62,14 +100,26 @@
   --gutter: 1.25rem;
   --gap: 1.25rem;
 
-  /* Radius scale: outer shell -> card -> inner element -> chip. */
-  --radius-shell: 2.5rem;
-  --radius-card: 1.75rem;
-  --radius-inner: 1.125rem;
-  --radius-chip: 0.75rem;
+  /* Radius scale.
+     The site is hard-edged. Content surfaces - sections, cards, panels, image
+     frames, form controls - have square corners, so these are all zero.
+     Two things are deliberately exempt and are NOT driven by this scale:
+       1. Circles and pills, which use `rounded-full`. A round object should be
+          round: icon buttons, badges, the rating chip, status dots.
+       2. The navbar, which floats over the page instead of sitting in it, and
+          keeps its own radius below.
+     Restoring the rounded look is a matter of putting these four values back. */
+  --radius-shell: 0rem;
+  --radius-card: 0rem;
+  --radius-inner: 0rem;
+  --radius-chip: 0rem;
+
+  /* Navbar only: the floating bar, its dropdown and the mobile sheet. */
+  --radius-nav: 1.5rem;
+  --radius-nav-inner: 0.875rem;
 
   /* Vertical rhythm. Section padding is the same everywhere. Deliberately
-     tight — the layout is meant to read as compact and dense, not airy. */
+     tight - the layout is meant to read as compact and dense, not airy. */
   --section-y: 3.5rem;
 
   /* How far an overlapping card bites into the band above it. */
@@ -98,6 +148,8 @@
   --radius-card: var(--radius-card);
   --radius-inner: var(--radius-inner);
   --radius-chip: var(--radius-chip);
+  --radius-nav: var(--radius-nav);
+  --radius-nav-inner: var(--radius-nav-inner);
   --spacing-gap: var(--gap);
   --spacing-gutter: var(--gutter);
   --spacing-overlap: var(--overlap);
@@ -110,13 +162,17 @@
   }
 
   html {
+    /* The page black lives on <html> rather than <body> so it also covers the
+       overscroll area - rubber-banding past the top or bottom of the page
+       should not flash a white strip. */
+    background-color: var(--color-paper);
+    color-scheme: dark;
     scroll-behavior: smooth;
     scroll-padding-top: 7.5rem;
     -webkit-text-size-adjust: 100%;
   }
 
   body {
-    background-color: var(--color-paper);
     color: var(--color-ink);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
@@ -141,7 +197,7 @@
   }
 
   :focus-visible {
-    outline: 2px solid var(--color-brand);
+    outline: 2px solid var(--color-brand-bright);
     outline-offset: 3px;
     border-radius: 6px;
   }
@@ -188,22 +244,12 @@
   }
 
   /* A modular surface. Same radius, same padding, everywhere. */
-  .panel {
-    background-color: var(--color-surface);
-    border-radius: var(--radius-card);
-    padding: clamp(1.5rem, 3vw, 2.25rem);
-  }
-
-  .panel-alt {
-    background-color: var(--color-surface-alt);
-    border-radius: var(--radius-card);
-    padding: clamp(1.5rem, 3vw, 2.25rem);
-  }
-
+  /* Panels keep their padding so the vertical rhythm is unchanged, but no
+     longer paint a box. What used to be a filled card is now content on the
+     page, separated by space and the occasional hairline rule. */
+  .panel,
+  .panel-alt,
   .panel-dark {
-    background-color: var(--color-ink);
-    color: #fff;
-    border-radius: var(--radius-card);
     padding: clamp(1.5rem, 3vw, 2.25rem);
   }
 
@@ -230,7 +276,18 @@
     font-size: 1rem;
     letter-spacing: 0.14em;
     text-transform: uppercase;
-    color: var(--color-brand);
+    color: var(--color-brand-bright);
+  }
+
+  /* The home page wordmark. Sized off the viewport so it always spans most of
+     the shell, and set on a tight line height so the vehicles beneath it can
+     be pulled up into the letterforms without colliding with a descender. */
+  .display-hero {
+    font-size: clamp(3.25rem, 15.5vw, 11.5rem);
+    text-transform: uppercase;
+    letter-spacing: -0.035em;
+    font-weight: 800;
+    line-height: 0.82;
   }
 
   .display-xl {

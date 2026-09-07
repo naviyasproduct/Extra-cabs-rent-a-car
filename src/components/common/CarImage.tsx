@@ -1,6 +1,5 @@
 import { Car as CarIcon } from "lucide-react";
 import { SafeImage } from "./SafeImage";
-import { cn } from "@/lib/utils";
 
 interface CarImageProps {
   src: string;
@@ -10,17 +9,18 @@ interface CarImageProps {
   sizes?: string;
   priority?: boolean;
   className?: string;
-  /** Inset around the vehicle. Turn off for thumbnails, where it wastes space. */
-  inset?: boolean;
 }
 
 /**
  * Vehicle photo.
  *
- * Fleet photography is supplied as cut-outs on a transparent background, so
- * the image is fitted rather than cropped — cropping a cut-out lops the nose
- * and tail off the car. Falls back to a branded placeholder tile when the
- * file is missing.
+ * Fleet photography is now supplied as ordinary photographs, so the frame is
+ * filled and cropped. It used to be cut-outs on a transparent background,
+ * which needed fitting rather than cropping plus a pool of light behind them
+ * to lift the car off the black page. Both of those are gone: a photograph
+ * brings its own background.
+ *
+ * Falls back to a branded placeholder tile when the file is missing.
  */
 export function CarImage({
   src,
@@ -29,16 +29,15 @@ export function CarImage({
   sizes,
   priority,
   className,
-  inset = true,
 }: CarImageProps) {
   return (
     <SafeImage
       src={src}
       alt={alt}
-      fit="contain"
+      fit="cover"
       sizes={sizes}
       priority={priority}
-      className={cn(inset && "p-4", className)}
+      className={className}
       fallback={
         <>
           <CarIcon className="size-10 stroke-[1.25]" aria-hidden />

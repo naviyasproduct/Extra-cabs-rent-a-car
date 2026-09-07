@@ -144,7 +144,7 @@ export function FleetBrowser({
       <div>
         <p className="mb-2 flex items-baseline justify-between font-display text-sm font-semibold uppercase tracking-[0.14em] text-ink-soft">
           <span>Max daily rate</span>
-          <span className="font-sans normal-case tracking-normal text-brand">
+          <span className="font-sans normal-case tracking-normal text-brand-bright">
             {formatPrice(filters.maxDaily ?? priceCeiling)}
           </span>
         </p>
@@ -203,7 +203,7 @@ export function FleetBrowser({
 
       {/* Results */}
       <div className="col-span-4 md:col-span-8 lg:col-span-9">
-        {/* Category chips — scroll on narrow screens, wrap once there is room,
+        {/* Category chips - scroll on narrow screens, wrap once there is room,
             so the last category is never clipped at the container edge. */}
         <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar lg:flex-wrap lg:overflow-x-visible">
           {(["all", ...categoryOrder] as const).map((category) => {
@@ -218,8 +218,8 @@ export function FleetBrowser({
                 className={cn(
                   "shrink-0 rounded-full px-4 py-2.5 text-sm font-semibold transition-colors duration-200",
                   active
-                    ? "bg-ink text-white"
-                    : "bg-surface text-ink-soft hover:bg-surface hover:text-ink",
+                    ? "bg-brand text-white"
+                    : "bg-field text-ink-soft hover:bg-field-hover hover:text-ink",
                 )}
               >
                 {category === "all" ? "All vehicles" : categoryLabels[category]}
@@ -252,7 +252,7 @@ export function FleetBrowser({
         </div>
 
         {results.length > 0 ? (
-          <div className="mt-6 grid gap-(--gap) sm:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-6 grid gap-(--gap) md:grid-cols-2 xl:grid-cols-3">
             {results.map((car) => (
               <CarCard key={car.id} car={car} />
             ))}

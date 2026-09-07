@@ -28,9 +28,9 @@ export function PriceCard({ car }: { car: Car }) {
 
   return (
     <div className="lg:sticky lg:top-28">
-      <div className="rounded-(--radius-card) bg-ink p-6 text-white lg:p-7">
+      <div className="p-6 lg:p-7">
         {/* Period switch */}
-        <div className="flex gap-1 rounded-full bg-white/10 p-1">
+        <div className="flex gap-1 rounded-full bg-field p-1">
           {periods.map((item) => (
             <button
               key={item.id}
@@ -39,7 +39,7 @@ export function PriceCard({ car }: { car: Car }) {
               aria-pressed={period === item.id}
               className={cn(
                 "flex-1 rounded-full py-2.5 text-sm font-semibold transition-colors duration-200",
-                period === item.id ? "bg-brand text-white" : "text-white/60 hover:text-white",
+                period === item.id ? "bg-brand text-white" : "text-muted hover:text-ink",
               )}
             >
               {item.label}
@@ -51,29 +51,25 @@ export function PriceCard({ car }: { car: Car }) {
           <p className="font-display text-4xl font-extrabold leading-none">
             {formatPrice(amount)}
           </p>
-          <p className="mt-2 text-sm text-white/50">
+          <p className="mt-2 text-sm text-muted">
             {active.suffix}
             {period !== "daily" ? ` · works out at ${formatPrice(perDay)} a day` : ""}
           </p>
         </div>
 
-        <div className="mt-6 h-px bg-white/10" />
+        <div className="mt-6 h-px bg-line" />
 
         <dl className="mt-6 space-y-3 text-sm">
           <div className="flex items-baseline justify-between gap-4">
-            <dt className="text-white/50">Free kilometres</dt>
-            <dd className="font-semibold">{car.specs.freeKmPerDay} km / day</dd>
+            <dt className="text-muted">Kilometres</dt>
+            <dd className="font-semibold">Unlimited</dd>
           </div>
           <div className="flex items-baseline justify-between gap-4">
-            <dt className="text-white/50">Extra kilometres</dt>
-            <dd className="font-semibold">{formatPrice(car.pricing.extraKm)} / km</dd>
-          </div>
-          <div className="flex items-baseline justify-between gap-4">
-            <dt className="text-white/50">Refundable deposit</dt>
+            <dt className="text-muted">Refundable deposit</dt>
             <dd className="font-semibold">{formatPrice(car.pricing.deposit)}</dd>
           </div>
           <div className="flex items-baseline justify-between gap-4">
-            <dt className="text-white/50">With a driver</dt>
+            <dt className="text-muted">With a driver</dt>
             <dd className="font-semibold">
               {car.pricing.withDriverDaily
                 ? `${formatPrice(car.pricing.withDriverDaily)} / day`
@@ -88,7 +84,7 @@ export function PriceCard({ car }: { car: Car }) {
             "mt-7 inline-flex h-14 w-full items-center justify-center gap-2 rounded-full font-semibold transition-colors duration-200",
             car.available
               ? "bg-brand text-white hover:bg-brand-hover"
-              : "pointer-events-none bg-white/10 text-white/40",
+              : "pointer-events-none bg-field text-muted",
           )}
           aria-disabled={!car.available}
         >
@@ -96,7 +92,7 @@ export function PriceCard({ car }: { car: Car }) {
           {car.available ? <ArrowRight className="size-4" aria-hidden /> : null}
         </Link>
 
-        <p className="mt-3 text-center text-sm text-white/40">
+        <p className="mt-3 text-center text-sm text-muted">
           No payment taken until we confirm availability.
         </p>
       </div>
@@ -105,18 +101,18 @@ export function PriceCard({ car }: { car: Car }) {
       <div className="mt-(--gap) grid grid-cols-2 gap-(--gap)">
         <a
           href={`tel:${site.phone.replace(/\s/g, "")}`}
-          className="inline-flex h-13 items-center justify-center gap-2 rounded-(--radius-inner) bg-surface py-4 text-sm font-semibold transition-colors hover:bg-surface-alt"
+          className="inline-flex h-13 items-center justify-center gap-2 rounded-(--radius-inner) bg-surface py-4 text-sm font-semibold transition-colors hover:bg-field"
         >
-          <Phone className="size-4 text-brand" aria-hidden />
+          <Phone className="size-4 text-brand-bright" aria-hidden />
           Call
         </a>
         <a
           href={`https://wa.me/${site.whatsapp.replace(/[^0-9]/g, "")}`}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-13 items-center justify-center gap-2 rounded-(--radius-inner) bg-surface py-4 text-sm font-semibold transition-colors hover:bg-surface-alt"
+          className="inline-flex h-13 items-center justify-center gap-2 rounded-(--radius-inner) bg-surface py-4 text-sm font-semibold transition-colors hover:bg-field"
         >
-          <MessageCircle className="size-4 text-brand" aria-hidden />
+          <MessageCircle className="size-4 text-brand-bright" aria-hidden />
           WhatsApp
         </a>
       </div>

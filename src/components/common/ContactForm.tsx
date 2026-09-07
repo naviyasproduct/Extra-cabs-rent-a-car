@@ -4,6 +4,7 @@ import { useState } from "react";
 import { CircleCheck, Send } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input, Select, Textarea } from "@/components/ui/Field";
+import { createEnquiryAction } from "@/app/panel/actions";
 
 const subjects = [
   "General enquiry",
@@ -16,7 +17,7 @@ const subjects = [
 ];
 
 /**
- * Contact form. Front end only — `submit` is the single seam where a POST to
+ * Contact form. Front end only - `submit` is the single seam where a POST to
  * /api/contact goes once the backend exists.
  */
 export function ContactForm() {
@@ -32,16 +33,23 @@ export function ContactForm() {
   const set = (key: keyof typeof form, value: string) =>
     setForm((current) => ({ ...current, [key]: value }));
 
-  const submit = (event: React.FormEvent) => {
+  const submit = async (event: React.FormEvent) => {
     event.preventDefault();
-    // BACKEND SEAM: POST `form` to /api/contact here.
+    // Lands in the shared inbox in the panel.
+    await createEnquiryAction({
+      name: form.name,
+      email: form.email,
+      phone: form.phone,
+      subject: form.subject,
+      body: form.message,
+    });
     setSent(true);
   };
 
   if (sent) {
     return (
       <div className="rounded-(--radius-card) bg-surface p-8 text-center lg:p-12">
-        <span className="mx-auto grid size-14 place-items-center rounded-full bg-brand-tint text-brand">
+        <span className="mx-auto grid size-14 place-items-center rounded-full bg-brand-tint text-brand-bright">
           <CircleCheck className="size-7" aria-hidden />
         </span>
         <h2 className="mt-6 font-display text-2xl font-bold uppercase">

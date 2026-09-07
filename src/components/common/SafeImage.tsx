@@ -38,7 +38,9 @@ export function SafeImage({
   className,
   // Owns the placeholder's surface entirely. Kept out of the base classes so
   // a caller's background never has to fight the default one for specificity.
-  fallbackClassName = "bg-surface-alt text-muted",
+  // Opaque on purpose: an empty tile should read as a deliberate placeholder,
+  // not as a hole in whatever surface sits behind it.
+  fallbackClassName = "bg-charcoal text-muted",
 }: SafeImageProps) {
   const [failed, setFailed] = useState(false);
 

@@ -3,7 +3,7 @@ import { Grid, Section, SectionHeader, Shell } from "@/components/ui/Layout";
 import { getTestimonials } from "@/lib/data/content";
 
 /**
- * Reviews on a three-column masonry-free grid. Cards are plain surfaces —
+ * Reviews on a three-column masonry-free grid. Cards are plain surfaces -
  * separation comes from the band tone behind them, not from borders.
  */
 export async function Testimonials() {
@@ -31,7 +31,7 @@ export async function Testimonials() {
                       key={index}
                       className={
                         index < testimonial.rating
-                          ? "size-4 fill-brand text-brand"
+                          ? "size-4 fill-brand-bright text-brand-bright"
                           : "size-4 text-line-strong"
                       }
                       aria-hidden
@@ -49,7 +49,7 @@ export async function Testimonials() {
                 <div className="rule" />
                 <div className="flex items-center gap-3 pt-4">
                   <span
-                    className="grid size-11 shrink-0 place-items-center rounded-full bg-brand-tint font-display text-sm font-bold uppercase text-brand"
+                    className="grid size-11 shrink-0 place-items-center rounded-full bg-brand-tint font-display text-sm font-bold uppercase text-brand-bright"
                     aria-hidden
                   >
                     {testimonial.name

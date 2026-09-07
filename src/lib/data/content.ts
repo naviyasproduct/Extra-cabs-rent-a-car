@@ -1,6 +1,5 @@
 import type {
   BookingExtra,
-  Destination,
   Faq,
   Location,
   Testimonial,
@@ -13,43 +12,11 @@ import type {
 const locations: Location[] = [
   {
     id: "loc-01",
-    name: "Dehiwala head office",
+    name: "Heiyanthuduwa office",
     type: "branch",
-    address: "No. 128, Galle Road, Dehiwala, Colombo",
-    hours: "Mon – Sat, 8.00 am – 8.00 pm",
+    address: "653 Samurdhi Mawatha, Heiyanthuduwa",
+    hours: "Mon to Sat, 8.00 am to 8.00 pm",
     phone: "+94 11 234 5678",
-  },
-  {
-    id: "loc-02",
-    name: "Bandaranaike International Airport",
-    type: "airport",
-    address: "Arrivals terminal, Katunayake",
-    hours: "Open 24 hours",
-    phone: "+94 77 123 4567",
-  },
-  {
-    id: "loc-03",
-    name: "Negombo beach road",
-    type: "branch",
-    address: "No. 42, Lewis Place, Negombo",
-    hours: "Daily, 7.00 am – 9.00 pm",
-    phone: "+94 77 987 6543",
-  },
-  {
-    id: "loc-04",
-    name: "Kandy city",
-    type: "branch",
-    address: "No. 15, Peradeniya Road, Kandy",
-    hours: "Mon – Sat, 8.30 am – 7.00 pm",
-    phone: "+94 81 220 1122",
-  },
-  {
-    id: "loc-05",
-    name: "Delivered to your address",
-    type: "delivery",
-    address: "Free inside Colombo, charged by distance elsewhere",
-    hours: "By arrangement",
-    phone: "+94 77 123 4567",
   },
 ];
 
@@ -60,70 +27,6 @@ export async function getLocations(): Promise<Location[]> {
 /** Flat list used by the pickup / drop-off selects. */
 export const locationNames: string[] = locations.map((l) => l.name);
 
-/* -------------------------------------------------------------------------- */
-/* Popular destinations                                                        */
-/* -------------------------------------------------------------------------- */
-
-const destinations: Destination[] = [
-  {
-    id: "dst-01",
-    name: "Kandy",
-    region: "Central Province",
-    distanceKm: 115,
-    driveTime: "3 hr 15 min",
-    fromPrice: 22000,
-    image: "/images/gallery/kandy.jpg",
-  },
-  {
-    id: "dst-02",
-    name: "Galle",
-    region: "Southern Province",
-    distanceKm: 125,
-    driveTime: "1 hr 45 min",
-    fromPrice: 19500,
-    image: "/images/gallery/galle.jpg",
-  },
-  {
-    id: "dst-03",
-    name: "Ella",
-    region: "Uva Province",
-    distanceKm: 200,
-    driveTime: "5 hr 30 min",
-    fromPrice: 34000,
-    image: "/images/gallery/ella.jpg",
-  },
-  {
-    id: "dst-04",
-    name: "Nuwara Eliya",
-    region: "Central Province",
-    distanceKm: 165,
-    driveTime: "4 hr 30 min",
-    fromPrice: 28000,
-    image: "/images/gallery/nuwara-eliya.jpg",
-  },
-  {
-    id: "dst-05",
-    name: "Yala National Park",
-    region: "Southern Province",
-    distanceKm: 260,
-    driveTime: "5 hr",
-    fromPrice: 38000,
-    image: "/images/gallery/yala.jpg",
-  },
-  {
-    id: "dst-06",
-    name: "Sigiriya",
-    region: "Central Province",
-    distanceKm: 170,
-    driveTime: "4 hr",
-    fromPrice: 30000,
-    image: "/images/gallery/sigiriya.jpg",
-  },
-];
-
-export async function getDestinations(): Promise<Destination[]> {
-  return destinations;
-}
 
 /* -------------------------------------------------------------------------- */
 /* Testimonials                                                                */
@@ -255,7 +158,7 @@ const faqs: Faq[] = [
     category: "vehicle",
     question: "Is there a kilometre limit?",
     answer:
-      "Each rental includes between 100 and 150 free kilometres per day depending on the vehicle, and the allowance is pooled across the whole rental. Beyond that we charge the published per-kilometre rate shown on the vehicle page.",
+      "No. Every rental includes unlimited kilometres at no extra charge. Drive as far as the trip needs and the daily rate is all you pay.",
   },
   {
     id: "faq-09",

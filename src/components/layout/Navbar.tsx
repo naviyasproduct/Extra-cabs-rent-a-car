@@ -75,9 +75,12 @@ export function Navbar() {
         <nav
           className={cn(
             "pointer-events-auto flex h-16 items-center justify-between gap-4 rounded-full pl-5 pr-2 transition-all duration-300 sm:pl-6 lg:h-[4.5rem]",
+            // Floating chrome sits over scrolling content, so it uses the opaque
+            // overlay tone rather than one of the translucent surfaces - at 4.5%
+            // the page would scroll straight through the navigation.
             scrolled || mobileOpen
-              ? "bg-surface shadow-(--shadow-nav)"
-              : "bg-surface/85 backdrop-blur-md",
+              ? "bg-overlay shadow-(--shadow-nav) backdrop-blur-xl"
+              : "bg-overlay/70 backdrop-blur-xl",
           )}
         >
           <Logo />
@@ -95,7 +98,7 @@ export function Navbar() {
                       href={item.href}
                       className={cn(
                         "relative rounded-full px-4 py-2.5 text-[0.9375rem] font-medium transition-colors duration-200",
-                        active ? "text-brand" : "text-ink-soft hover:text-ink",
+                        active ? "text-brand-bright" : "text-ink-soft hover:text-ink",
                       )}
                     >
                       {item.label}
@@ -123,7 +126,7 @@ export function Navbar() {
                     onClick={() => setOpenDropdown(open ? null : item.label)}
                     className={cn(
                       "relative flex items-center gap-1.5 rounded-full px-4 py-2.5 text-[0.9375rem] font-medium transition-colors duration-200",
-                      active || open ? "text-brand" : "text-ink-soft hover:text-ink",
+                      active || open ? "text-brand-bright" : "text-ink-soft hover:text-ink",
                     )}
                   >
                     {item.label}
@@ -147,12 +150,12 @@ export function Navbar() {
                         : "invisible -translate-y-1 opacity-0",
                     )}
                   >
-                    <div className="rounded-(--radius-card) bg-surface p-2 shadow-(--shadow-lift)">
+                    <div className="rounded-(--radius-nav) bg-overlay p-2 shadow-(--shadow-lift) backdrop-blur-xl">
                       {item.children?.map((child) => (
                         <Link
                           key={child.href}
                           href={child.href}
-                          className="block rounded-(--radius-inner) px-4 py-3 transition-colors duration-200 hover:bg-surface-alt"
+                          className="block rounded-(--radius-nav-inner) px-4 py-3 transition-colors duration-200 hover:bg-field"
                         >
                           <span className="block text-[0.9375rem] font-semibold">
                             {child.label}
@@ -175,7 +178,7 @@ export function Navbar() {
           <div className="flex items-center gap-2">
             <a
               href={`tel:${site.phone.replace(/\s/g, "")}`}
-              className="hidden items-center gap-2 rounded-full px-4 py-2.5 text-[0.9375rem] font-semibold text-ink transition-colors hover:text-brand xl:flex"
+              className="hidden items-center gap-2 rounded-full px-4 py-2.5 text-[0.9375rem] font-semibold text-ink transition-colors hover:text-brand-bright xl:flex"
             >
               <Phone className="size-4" aria-hidden />
               {site.phone}
@@ -188,7 +191,7 @@ export function Navbar() {
               onClick={() => setMobileOpen((open) => !open)}
               aria-expanded={mobileOpen}
               aria-label={mobileOpen ? "Close menu" : "Open menu"}
-              className="grid size-11 place-items-center rounded-full bg-surface-alt text-ink transition-colors hover:bg-line lg:hidden"
+              className="grid size-11 place-items-center rounded-full bg-field text-ink transition-colors hover:bg-line lg:hidden"
             >
               {mobileOpen ? <X className="size-5" /> : <Menu className="size-5" />}
             </button>
@@ -206,7 +209,7 @@ export function Navbar() {
         <div className="shell pb-10">
           <div
             className={cn(
-              "rounded-(--radius-shell) bg-surface p-3 shadow-(--shadow-lift) transition-transform duration-300",
+              "rounded-(--radius-nav) bg-overlay p-3 shadow-(--shadow-lift) backdrop-blur-xl transition-transform duration-300",
               mobileOpen ? "translate-y-0" : "-translate-y-3",
             )}
           >
@@ -216,10 +219,10 @@ export function Navbar() {
                   <Link
                     href={item.href}
                     className={cn(
-                      "block rounded-(--radius-inner) px-4 py-3.5 font-display text-xl font-semibold uppercase tracking-tight transition-colors",
+                      "block rounded-(--radius-nav-inner) px-4 py-3.5 font-display text-xl font-semibold uppercase tracking-tight transition-colors",
                       isActive(item.href)
-                        ? "bg-surface-alt text-brand"
-                        : "text-ink hover:bg-surface-alt",
+                        ? "bg-surface-alt text-brand-bright"
+                        : "text-ink hover:bg-field",
                     )}
                   >
                     {item.label}
@@ -230,7 +233,7 @@ export function Navbar() {
                         <li key={child.href}>
                           <Link
                             href={child.href}
-                            className="block rounded-(--radius-inner) px-4 py-2.5 text-[0.9375rem] text-muted transition-colors hover:bg-surface-alt hover:text-ink"
+                            className="block rounded-(--radius-nav-inner) px-4 py-2.5 text-[0.9375rem] text-muted transition-colors hover:bg-field hover:text-ink"
                           >
                             {child.label}
                           </Link>
@@ -248,7 +251,7 @@ export function Navbar() {
               </LinkButton>
               <a
                 href={`tel:${site.phone.replace(/\s/g, "")}`}
-                className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-full bg-surface-alt font-semibold text-ink"
+                className="inline-flex h-14 w-full items-center justify-center gap-2 rounded-full bg-field font-semibold text-ink"
               >
                 <Phone className="size-4" aria-hidden />
                 {site.phone}
@@ -262,7 +265,7 @@ export function Navbar() {
       <div
         onClick={() => setMobileOpen(false)}
         className={cn(
-          "fixed inset-0 -z-10 bg-ink/25 transition-opacity duration-300 lg:hidden",
+          "fixed inset-0 -z-10 bg-black/70 transition-opacity duration-300 lg:hidden",
           mobileOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0",
         )}
         aria-hidden

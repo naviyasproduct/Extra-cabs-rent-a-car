@@ -7,7 +7,7 @@ import { site } from "@/lib/data/site";
  * Dark band.
  *
  * The stats slab is pulled up so it sits half on the light section above and
- * half on the dark one below — the seam between the two bands runs straight
+ * half on the dark one below - the seam between the two bands runs straight
  * through it, which is what welds the two together.
  */
 export function WhyUs() {
@@ -28,7 +28,7 @@ export function WhyUs() {
             >
               <p className="font-display text-4xl font-extrabold leading-none lg:text-5xl">
                 {stat.value}
-                <span className="text-brand">{stat.suffix}</span>
+                <span className="text-brand-bright">{stat.suffix}</span>
               </p>
               <p className="mx-auto mt-3 max-w-[18ch] text-sm leading-snug text-muted">
                 {stat.label}
@@ -41,12 +41,12 @@ export function WhyUs() {
           <Grid>
             <div className="col-span-4 md:col-span-8 lg:col-span-4">
               <p className="eyebrow mb-3">Why Extra</p>
-              <h2 className="display-lg text-white">
+              <h2 className="display-lg text-ink">
                 The boring things,
                 <br />
                 done properly
               </h2>
-              <p className="mt-5 max-w-[38ch] leading-relaxed text-white/60">
+              <p className="mt-5 max-w-[38ch] leading-relaxed text-muted">
                 Anyone can list a car online. What people come back for is the
                 paperwork being quick, the price not moving, and someone
                 answering the phone when a tyre goes flat outside Matara.
@@ -57,13 +57,13 @@ export function WhyUs() {
               <Grid className="gap-y-8 lg:grid-cols-8">
                 {differentiators.map((item) => (
                   <div key={item.title} className="col-span-4 md:col-span-4 lg:col-span-4">
-                    <span className="grid size-11 place-items-center rounded-(--radius-inner) bg-white/10 text-brand">
+                    <span className="grid size-11 place-items-center rounded-(--radius-inner) bg-field text-brand-bright">
                       <Icon name={item.icon} className="size-5" />
                     </span>
-                    <h3 className="mt-5 font-display text-lg font-bold uppercase text-white">
+                    <h3 className="mt-5 font-display text-lg font-bold uppercase text-ink">
                       {item.title}
                     </h3>
-                    <p className="mt-2 max-w-[36ch] text-[0.9375rem] leading-relaxed text-white/55">
+                    <p className="mt-2 max-w-[36ch] text-[0.9375rem] leading-relaxed text-muted">
                       {item.description}
                     </p>
                   </div>

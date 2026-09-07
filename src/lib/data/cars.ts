@@ -1,19 +1,21 @@
 import type { Car, CarCategory, CarFilters } from "@/types";
+import { MAX_VEHICLE_IMAGES } from "@/types";
 
 /**
  * Fleet data.
  *
  * This is the ONLY place vehicle data lives. When the backend lands, replace
  * the array with a database query inside the accessor functions at the bottom
- * of this file — the accessors are already async, so no component changes.
+ * of this file - the accessors are already async, so no component changes.
  *
- * Image convention (drop files into /public/images/cars):
- *   <slug>.png      main / card shot
- *   <slug>-2.png    gallery
- *   <slug>-3.png    gallery
+ * Images: every vehicle currently shares the same three stock photographs in
+ * /public/images/cars (fleet-01 to fleet-03), rotated so neighbouring tiles in
+ * the grid do not show an identical shot. Replace a car's `images` array with
+ * its own files as real photography arrives; nothing else needs to change.
+ * A vehicle shows at most MAX_VEHICLE_IMAGES of them.
  * Missing files fall back to a styled placeholder automatically.
  */
-const cars: Car[] = [
+const fleet: Car[] = [
   {
     id: "car-001",
     slug: "toyota-chr",
@@ -32,13 +34,11 @@ const cars: Car[] = [
       fuel: "hybrid",
       engineCc: 1800,
       airConditioned: true,
-      freeKmPerDay: 120,
     },
     pricing: {
       daily: 14500,
       weekly: 91000,
       monthly: 330000,
-      extraKm: 65,
       deposit: 50000,
       withDriverDaily: 21000,
     },
@@ -51,9 +51,9 @@ const cars: Car[] = [
       "LED headlamps",
     ],
     images: [
-      "/images/cars/toyota-chr.png",
-      "/images/cars/toyota-chr-2.png",
-      "/images/cars/toyota-chr-3.png",
+      "/images/cars/fleet-01.jpg",
+      "/images/cars/fleet-02.jpg",
+      "/images/cars/fleet-03.jpg",
     ],
     rating: 4.9,
     reviewCount: 128,
@@ -79,13 +79,11 @@ const cars: Car[] = [
       fuel: "hybrid",
       engineCc: 1800,
       airConditioned: true,
-      freeKmPerDay: 120,
     },
     pricing: {
       daily: 11500,
       weekly: 72000,
       monthly: 265000,
-      extraKm: 55,
       deposit: 40000,
       withDriverDaily: 18000,
     },
@@ -97,7 +95,11 @@ const cars: Car[] = [
       "Push start",
       "Eco and Power drive modes",
     ],
-    images: ["/images/cars/toyota-prius.png", "/images/cars/toyota-prius-2.png"],
+    images: [
+      "/images/cars/fleet-02.jpg",
+      "/images/cars/fleet-03.jpg",
+      "/images/cars/fleet-01.jpg",
+    ],
     rating: 4.8,
     reviewCount: 96,
     available: true,
@@ -122,13 +124,11 @@ const cars: Car[] = [
       fuel: "hybrid",
       engineCc: 660,
       airConditioned: true,
-      freeKmPerDay: 100,
     },
     pricing: {
       daily: 7500,
       weekly: 46000,
       monthly: 165000,
-      extraKm: 40,
       deposit: 25000,
       withDriverDaily: 14000,
     },
@@ -140,8 +140,9 @@ const cars: Car[] = [
       "Tall-boy cabin",
     ],
     images: [
-      "/images/cars/suzuki-wagon-r-stingray.png",
-      "/images/cars/suzuki-wagon-r-stingray-2.png",
+      "/images/cars/fleet-03.jpg",
+      "/images/cars/fleet-01.jpg",
+      "/images/cars/fleet-02.jpg",
     ],
     rating: 4.7,
     reviewCount: 74,
@@ -167,13 +168,11 @@ const cars: Car[] = [
       fuel: "hybrid",
       engineCc: 1500,
       airConditioned: true,
-      freeKmPerDay: 120,
     },
     pricing: {
       daily: 9500,
       weekly: 59000,
       monthly: 215000,
-      extraKm: 45,
       deposit: 30000,
       withDriverDaily: 16000,
     },
@@ -184,7 +183,11 @@ const cars: Car[] = [
       "Push start",
       "Alloy wheels",
     ],
-    images: ["/images/cars/toyota-aqua.png"],
+    images: [
+      "/images/cars/fleet-01.jpg",
+      "/images/cars/fleet-02.jpg",
+      "/images/cars/fleet-03.jpg",
+    ],
     rating: 4.7,
     reviewCount: 88,
     available: true,
@@ -208,13 +211,11 @@ const cars: Car[] = [
       fuel: "petrol",
       engineCc: 800,
       airConditioned: true,
-      freeKmPerDay: 100,
     },
     pricing: {
       daily: 5500,
       weekly: 34000,
       monthly: 120000,
-      extraKm: 35,
       deposit: 20000,
       withDriverDaily: null,
     },
@@ -224,7 +225,11 @@ const cars: Car[] = [
       "Bluetooth audio",
       "Central locking",
     ],
-    images: ["/images/cars/suzuki-alto.png"],
+    images: [
+      "/images/cars/fleet-02.jpg",
+      "/images/cars/fleet-03.jpg",
+      "/images/cars/fleet-01.jpg",
+    ],
     rating: 4.5,
     reviewCount: 61,
     available: true,
@@ -249,13 +254,11 @@ const cars: Car[] = [
       fuel: "diesel",
       engineCc: 2500,
       airConditioned: true,
-      freeKmPerDay: 150,
     },
     pricing: {
       daily: 18500,
       weekly: 115000,
       monthly: 420000,
-      extraKm: 85,
       deposit: 60000,
       withDriverDaily: 24000,
     },
@@ -266,7 +269,11 @@ const cars: Car[] = [
       "USB charging points",
       "Curtains and tinted glass",
     ],
-    images: ["/images/cars/toyota-kdh-hiace.png", "/images/cars/toyota-kdh-hiace-2.png"],
+    images: [
+      "/images/cars/fleet-03.jpg",
+      "/images/cars/fleet-01.jpg",
+      "/images/cars/fleet-02.jpg",
+    ],
     rating: 4.8,
     reviewCount: 53,
     available: true,
@@ -291,13 +298,11 @@ const cars: Car[] = [
       fuel: "hybrid",
       engineCc: 1500,
       airConditioned: true,
-      freeKmPerDay: 120,
     },
     pricing: {
       daily: 13500,
       weekly: 85000,
       monthly: 310000,
-      extraKm: 60,
       deposit: 50000,
       withDriverDaily: 20000,
     },
@@ -308,7 +313,11 @@ const cars: Car[] = [
       "Paddle shifters",
       "Dual-zone climate",
     ],
-    images: ["/images/cars/honda-vezel.png", "/images/cars/honda-vezel-2.png"],
+    images: [
+      "/images/cars/fleet-01.jpg",
+      "/images/cars/fleet-02.jpg",
+      "/images/cars/fleet-03.jpg",
+    ],
     rating: 4.8,
     reviewCount: 71,
     available: true,
@@ -332,13 +341,11 @@ const cars: Car[] = [
       fuel: "petrol",
       engineCc: 1500,
       airConditioned: true,
-      freeKmPerDay: 120,
     },
     pricing: {
       daily: 12000,
       weekly: 75000,
       monthly: 275000,
-      extraKm: 55,
       deposit: 40000,
       withDriverDaily: 18500,
     },
@@ -349,7 +356,11 @@ const cars: Car[] = [
       "Cruise control",
       "Fabric sun shades",
     ],
-    images: ["/images/cars/toyota-premio.png"],
+    images: [
+      "/images/cars/fleet-02.jpg",
+      "/images/cars/fleet-03.jpg",
+      "/images/cars/fleet-01.jpg",
+    ],
     rating: 4.6,
     reviewCount: 44,
     available: true,
@@ -373,13 +384,11 @@ const cars: Car[] = [
       fuel: "diesel",
       engineCc: 3000,
       airConditioned: true,
-      freeKmPerDay: 150,
     },
     pricing: {
       daily: 26000,
       weekly: 165000,
       monthly: 600000,
-      extraKm: 110,
       deposit: 100000,
       withDriverDaily: 33000,
     },
@@ -392,8 +401,9 @@ const cars: Car[] = [
       "Hill descent control",
     ],
     images: [
-      "/images/cars/toyota-land-cruiser-prado.png",
-      "/images/cars/toyota-land-cruiser-prado-2.png",
+      "/images/cars/fleet-03.jpg",
+      "/images/cars/fleet-01.jpg",
+      "/images/cars/fleet-02.jpg",
     ],
     rating: 4.9,
     reviewCount: 37,
@@ -419,13 +429,11 @@ const cars: Car[] = [
       fuel: "electric",
       engineCc: 0,
       airConditioned: true,
-      freeKmPerDay: 100,
     },
     pricing: {
       daily: 10500,
       weekly: 66000,
       monthly: 240000,
-      extraKm: 40,
       deposit: 35000,
       withDriverDaily: null,
     },
@@ -436,7 +444,11 @@ const cars: Car[] = [
       "One-pedal driving",
       "Silent cabin",
     ],
-    images: ["/images/cars/nissan-leaf.png"],
+    images: [
+      "/images/cars/fleet-01.jpg",
+      "/images/cars/fleet-02.jpg",
+      "/images/cars/fleet-03.jpg",
+    ],
     rating: 4.6,
     reviewCount: 29,
     available: true,
@@ -461,13 +473,11 @@ const cars: Car[] = [
       fuel: "petrol",
       engineCc: 2000,
       airConditioned: true,
-      freeKmPerDay: 100,
     },
     pricing: {
       daily: 45000,
       weekly: 290000,
       monthly: 1050000,
-      extraKm: 180,
       deposit: 150000,
       withDriverDaily: 45000,
     },
@@ -480,8 +490,9 @@ const cars: Car[] = [
       "Bottled water and tissues",
     ],
     images: [
-      "/images/cars/mercedes-benz-e-class.png",
-      "/images/cars/mercedes-benz-e-class-2.png",
+      "/images/cars/fleet-02.jpg",
+      "/images/cars/fleet-03.jpg",
+      "/images/cars/fleet-01.jpg",
     ],
     rating: 5.0,
     reviewCount: 22,
@@ -507,13 +518,11 @@ const cars: Car[] = [
       fuel: "diesel",
       engineCc: 2400,
       airConditioned: true,
-      freeKmPerDay: 150,
     },
     pricing: {
       daily: 22000,
       weekly: 138000,
       monthly: 500000,
-      extraKm: 95,
       deposit: 80000,
       withDriverDaily: 29000,
     },
@@ -524,7 +533,11 @@ const cars: Car[] = [
       "Reverse camera and sensors",
       "Roof rails",
     ],
-    images: ["/images/cars/mitsubishi-montero-sport.png"],
+    images: [
+      "/images/cars/fleet-03.jpg",
+      "/images/cars/fleet-01.jpg",
+      "/images/cars/fleet-02.jpg",
+    ],
     rating: 4.7,
     reviewCount: 31,
     available: false,
@@ -552,6 +565,18 @@ export const categoryOrder: CarCategory[] = [
   "electric",
 ];
 
+/**
+ * The fleet with the image cap applied once, at the source.
+ *
+ * Every accessor below reads this, so no consumer, page or component has to
+ * remember the limit or slice for itself. When this becomes a database query,
+ * apply the same cap there.
+ */
+const cars: Car[] = fleet.map((car) => ({
+  ...car,
+  images: car.images.slice(0, MAX_VEHICLE_IMAGES),
+}));
+
 /* ---------------------------------------------------------------------------
    Data accessors.
    These are the seams the backend plugs into. Keep them async and keep every
@@ -568,6 +593,17 @@ export async function getCarBySlug(slug: string): Promise<Car | null> {
 
 export async function getFeaturedCars(limit = 6): Promise<Car[]> {
   return cars.filter((car) => car.featured).slice(0, limit);
+}
+
+/**
+ * Featured vehicles first, then everything else, so a grid of `limit` always
+ * fills evenly however many are flagged featured. The home page grid and its
+ * structured data both read from here, so they never disagree.
+ */
+export async function getShowcaseCars(limit = 8): Promise<Car[]> {
+  const featured = cars.filter((car) => car.featured);
+  const rest = cars.filter((car) => !car.featured);
+  return [...featured, ...rest].slice(0, limit);
 }
 
 export async function getRelatedCars(slug: string, limit = 3): Promise<Car[]> {

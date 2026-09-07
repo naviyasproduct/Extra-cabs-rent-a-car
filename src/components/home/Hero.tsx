@@ -1,95 +1,66 @@
 import Image from "next/image";
-import { Check } from "lucide-react";
 import { LinkButton } from "@/components/ui/Button";
-import { Grid, Shell } from "@/components/ui/Layout";
-import { Rating } from "@/components/ui/Badge";
-import { SearchBar } from "./SearchBar";
-
-const promises = [
-  "Insurance included",
-  "Free Colombo delivery",
-  "No hidden charges",
-];
+import { Shell } from "@/components/ui/Layout";
 
 /**
  * Hero.
  *
- * The copy sits on columns 1-5 and the vehicle plate on 6-12, both inside one
- * rounded slab. The plate is given the wider half deliberately — it carries
- * the brand lockup as well as the cars, so it needs the room. The search card
- * is pulled up so it straddles the bottom edge of that slab: the first of the
- * deliberate overlaps that stitch the page together.
+ * Centred and boxless: the wordmark, then the fleet, then one line of copy and
+ * a single button. No slab behind any of it, so the cars sit on the black page
+ * rather than in a container.
+ *
+ * The vehicles are pulled up into the bottom of the lettering with a negative
+ * margin rather than absolutely positioned over it. An overlay would sit at a
+ * fixed offset and collide with the cars at some widths; an overlap always
+ * lands in the same place relative to the type, at every size.
+ *
+ * The top padding is navbar clearance plus a deliberate drop, so the wordmark
+ * starts below the fold line rather than crowding the bar. The negative margin
+ * on the image below is what sets the wordmark-to-cars gap, so changing the
+ * drop moves the pair together and leaves that gap alone.
  */
 export function Hero() {
   return (
-    <section className="bg-paper pt-[calc(4.75rem+var(--gap))] sm:pt-[calc(5.5rem+var(--gap))]">
+    <section className="pt-[calc(4.75rem+var(--gap)+2rem)] text-center sm:pt-[calc(5.5rem+var(--gap)+3rem)]">
       <Shell>
-        <div className="overflow-hidden rounded-(--radius-shell) bg-surface-alt px-6 pt-8 pb-[calc(var(--overlap)+2rem)] sm:px-8 lg:px-12 lg:pt-10">
-          <Grid className="items-center">
-            {/* Copy */}
-            <div className="col-span-4 md:col-span-8 lg:col-span-5">
-              <h1 className="display-xl">
-                Rent a car.
-                <br />
-                <span className="text-brand">Or let us drive.</span>
-              </h1>
+        {/* Wordmark, with the fleet rising into it */}
+        <h1 className="display-hero text-brand">Extra Cabs</h1>
 
-              <p className="mt-5 max-w-[42ch] text-lg leading-relaxed text-ink-soft">
-                Self-drive rentals, cabs with a driver, airport transfers and
-                wedding cars. Clean vehicles, honest daily rates, and a real
-                person on the phone at any hour.
-              </p>
+        {/*
+          hero-fleet.png is a 2000x2000 square, but the vehicles only occupy
+          y 788 to 1514 of it. That is 39% dead transparent space above the cars
+          and 24% below, so `object-contain` in any box leaves a large invisible
+          gap that no margin can close, and shrinks the cars to fit padding.
 
-              <ul className="mt-6 flex flex-wrap gap-x-5 gap-y-2">
-                {promises.map((promise) => (
-                  <li
-                    key={promise}
-                    className="inline-flex items-center gap-2 font-medium text-ink-soft"
-                  >
-                    <Check className="size-5 text-brand" aria-hidden />
-                    {promise}
-                  </li>
-                ))}
-              </ul>
+          So: a 5:2 frame cropped to the artwork with object-cover. The vertical
+          object-position is derived, not guessed. The content centre sits at
+          1151.5/2000 = 57.6% of the source. For a box of height 0.4W holding an
+          image scaled to height W, the overflow is 0.6W, and centring that band
+          needs 0.3755W / 0.6W = 62.6%.
 
-              <div className="mt-8 flex flex-wrap items-center gap-2.5">
-                <LinkButton href="/fleet" size="lg" arrow>
-                  Browse the fleet
-                </LinkButton>
-                <LinkButton href="/services" variant="light" size="lg" arrow>
-                  See our services
-                </LinkButton>
-              </div>
-
-              <div className="mt-7 flex flex-wrap items-center gap-x-5 gap-y-2">
-                <Rating value={4.8} count={412} className="text-base" />
-                <span className="h-4 w-px bg-line-strong" aria-hidden />
-                <span className="text-muted">
-                  40+ vehicles &middot; 12,000+ completed rentals
-                </span>
-              </div>
-            </div>
-
-            {/* Vehicle plate. Pushed out past the slab padding on large screens
-                so the cars read at full size rather than politely boxed in. */}
-            <div className="col-span-4 mt-8 md:col-span-8 lg:col-span-7 lg:mt-0 lg:-mr-6 xl:-mr-10">
-              <div className="relative aspect-[5/4] w-full lg:aspect-square">
-                <Image
-                  src="/images/home/hero-fleet.png"
-                  alt="Extra Cabs and Rent a Cars fleet: Toyota C-HR, Toyota Prius and Suzuki Wagon R Stingray"
-                  fill
-                  priority
-                  sizes="(max-width: 1024px) 100vw, 58vw"
-                  className="object-contain object-center"
-                />
-              </div>
-            </div>
-          </Grid>
+          If the image is ever replaced, re-measure and update this number.
+        */}
+        <div className="relative -mt-4 aspect-[5/2] w-full sm:-mt-8 lg:-mt-12">
+          <Image
+            src="/images/home/hero-fleet.png"
+            alt="Extra Cabs and Rent a Cars fleet: Toyota C-HR, Toyota Prius and Suzuki Wagon R Stingray"
+            fill
+            priority
+            sizes="100vw"
+            className="object-cover [object-position:50%_62.6%]"
+          />
         </div>
 
-        {/* Overlapping search card */}
-        <div className="overlap-up">
-          <SearchBar />
+        <p className="mx-auto mt-5 max-w-[54ch] text-lg leading-relaxed text-ink-soft lg:text-xl">
+          Self-drive rentals, cabs with a driver, airport transfers and wedding
+          cars. Clean vehicles, honest daily rates, and a real person on the
+          phone at any hour.
+        </p>
+
+        <div className="mt-7 flex justify-center">
+          <LinkButton href="/fleet" size="lg" arrow>
+            Browse the fleet
+          </LinkButton>
         </div>
       </Shell>
     </section>

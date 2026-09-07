@@ -25,16 +25,6 @@ export interface Location {
   phone: string;
 }
 
-export interface Destination {
-  id: string;
-  name: string;
-  region: string;
-  distanceKm: number;
-  driveTime: string;
-  fromPrice: number;
-  image: string;
-}
-
 export interface NavLink {
   label: string;
   href: string;

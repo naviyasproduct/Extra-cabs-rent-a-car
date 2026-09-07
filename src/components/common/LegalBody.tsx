@@ -26,7 +26,7 @@ export function LegalBody({ sections }: { sections: LegalSection[] }) {
                   <li key={section.id}>
                     <a
                       href={`#${section.id}`}
-                      className="text-[0.9375rem] text-ink-soft transition-colors hover:text-brand"
+                      className="text-[0.9375rem] text-ink-soft transition-colors hover:text-brand-bright"
                     >
                       {section.heading}
                     </a>

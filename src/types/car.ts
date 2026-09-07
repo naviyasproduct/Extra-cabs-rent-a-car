@@ -1,3 +1,15 @@
+/**
+ * How many photographs a vehicle may show.
+ *
+ * Five is the cap: one card shot plus four gallery views. Beyond that the
+ * thumbnail rail wraps to a second row and nobody clicks past the first few
+ * anyway. The upload screen in the staff panel will enforce the same number.
+ *
+ * Lives here rather than in cars.ts so client components can import it without
+ * dragging the whole fleet array into the browser bundle.
+ */
+export const MAX_VEHICLE_IMAGES = 5;
+
 export type CarCategory =
   | "micro"
   | "hatchback"
@@ -16,8 +28,6 @@ export interface CarPricing {
   daily: number;
   weekly: number;
   monthly: number;
-  /** Charge per km once the free allowance is used up. */
-  extraKm: number;
   /** Refundable security deposit held during the rental. */
   deposit: number;
   /** Hourly rate with a driver, null when the car is self-drive only. */
@@ -32,8 +42,6 @@ export interface CarSpecs {
   fuel: FuelType;
   engineCc: number;
   airConditioned: boolean;
-  /** Free kilometres included per rental day. */
-  freeKmPerDay: number;
 }
 
 export interface Car {
@@ -49,7 +57,10 @@ export interface Car {
   specs: CarSpecs;
   pricing: CarPricing;
   features: string[];
-  /** Paths under /public/images/cars. The first is the card/hero shot. */
+  /**
+   * Paths under /public/images/cars. The first is the card and hero shot.
+   * At most MAX_VEHICLE_IMAGES entries; anything beyond that is ignored.
+   */
   images: string[];
   rating: number;
   reviewCount: number;

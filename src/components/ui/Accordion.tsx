@@ -40,7 +40,7 @@ export function Accordion({
                 aria-controls={`${item.id}-panel`}
                 className="group flex w-full items-start justify-between gap-6 py-5 text-left"
               >
-                <span className="font-display text-lg font-semibold leading-snug transition-colors group-hover:text-brand">
+                <span className="font-display text-lg font-semibold leading-snug transition-colors group-hover:text-brand-bright">
                   {item.question}
                 </span>
                 <span

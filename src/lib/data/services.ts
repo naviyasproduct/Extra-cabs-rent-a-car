@@ -24,7 +24,7 @@ const services: Service[] = [
       {
         title: "No hidden charges",
         description:
-          "The rate you see is the rate you pay. Insurance, basic maintenance and the free kilometre allowance are all in the daily price.",
+          "The rate you see is the rate you pay. Insurance, basic maintenance and unlimited kilometres are all in the daily price.",
       },
       {
         title: "Delivered to your door",
@@ -32,9 +32,9 @@ const services: Service[] = [
           "We drop the vehicle wherever you are inside Colombo at no cost, and collect it the same way when you are done.",
       },
       {
-        title: "Generous kilometre allowance",
+        title: "Unlimited kilometres",
         description:
-          "Between 100 and 150 free kilometres a day depending on the vehicle, with a clearly published rate after that.",
+          "No distance limit and no per-kilometre charge. Drive as far as the trip needs.",
       },
       {
         title: "Cleaned before every handover",

@@ -6,8 +6,8 @@ type Tone = "brand" | "dark" | "muted" | "success" | "light";
 
 const tones: Record<Tone, string> = {
   brand: "bg-brand text-white",
-  dark: "bg-ink text-white",
-  muted: "bg-surface-alt text-ink-soft",
+  dark: "bg-contrast text-white",
+  muted: "bg-field text-ink-soft",
   success: "bg-success/12 text-success",
   light: "bg-white/12 text-white",
 };
@@ -48,7 +48,7 @@ export function Rating({
 }) {
   return (
     <span className={cn("inline-flex items-center gap-1.5 text-sm", className)}>
-      <Star className="size-4 shrink-0 fill-brand text-brand" aria-hidden />
+      <Star className="size-4 shrink-0 fill-brand-bright text-brand-bright" aria-hidden />
       <span className="font-semibold">{value.toFixed(1)}</span>
       {count !== undefined ? (
         <span className={tone === "dark" ? "text-white/50" : "text-muted"}>({count})</span>

@@ -21,7 +21,7 @@ export function Logo({
     <Link
       href={href}
       className={cn("group inline-flex flex-col leading-none", className)}
-      aria-label="Extra Cabs & Rent a Cars — home"
+      aria-label="Extra Cabs & Rent a Cars, home"
     >
       <span
         className={cn(

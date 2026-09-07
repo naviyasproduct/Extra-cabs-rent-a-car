@@ -6,7 +6,6 @@ export interface BookingDraft {
   serviceType: ServiceSlug;
   pickupLocation: string;
   dropoffLocation: string;
-  sameReturnLocation: boolean;
   pickupDate: string;
   pickupTime: string;
   returnDate: string;

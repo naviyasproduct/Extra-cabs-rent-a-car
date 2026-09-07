@@ -11,11 +11,19 @@ import {
   Users,
 } from "lucide-react";
 import { CarImage } from "@/components/common/CarImage";
+import { createBookingAction } from "@/app/panel/actions";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { CheckTile, Field, Input, Select, Textarea } from "@/components/ui/Field";
 import { bookingExtras as extras, locationNames } from "@/lib/data/content";
 import type { BookingDraft, BookingStep, Car, ServiceSlug } from "@/types";
 import { cn, daysBetween, formatPrice, isoDaysFromNow, todayIso } from "@/lib/utils";
+
+/**
+ * The one office, plus delivery. Delivery is not a location we have, it is a
+ * service we offer, which is why it is added here rather than sitting in the
+ * locations data.
+ */
+const pickupOptions: string[] = [...locationNames, "Delivered to my address"];
 
 const steps: { id: BookingStep; label: string }[] = [
   { id: "trip", label: "Your trip" },
@@ -48,7 +56,6 @@ export function BookingForm({ cars }: { cars: Car[] }) {
     serviceType: (searchParams.get("service") as ServiceSlug) ?? "self-drive-rental",
     pickupLocation: searchParams.get("pickup") ?? locationNames[0],
     dropoffLocation: searchParams.get("pickup") ?? locationNames[0],
-    sameReturnLocation: true,
     pickupDate: searchParams.get("from") ?? isoDaysFromNow(1),
     pickupTime: "09:00",
     returnDate: searchParams.get("to") ?? isoDaysFromNow(4),
@@ -107,8 +114,21 @@ export function BookingForm({ cars }: { cars: Car[] }) {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const submit = () => {
-    // BACKEND SEAM: POST `draft` to /api/bookings here.
+  const submit = async () => {
+    // Lands in the panel as a pending booking.
+    await createBookingAction({
+      carSlug: draft.carSlug,
+      customerName: draft.fullName,
+      phone: draft.phone,
+      email: draft.email,
+      pickupLocation: draft.pickupLocation,
+      pickupDate: draft.pickupDate,
+      returnDate: draft.returnDate,
+      withDriver: draft.withDriver,
+      notes: draft.notes,
+      amount: totals.total,
+      source: "website",
+    });
     setSubmitted(true);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -116,12 +136,12 @@ export function BookingForm({ cars }: { cars: Car[] }) {
   if (submitted) {
     return (
       <div className="rounded-(--radius-shell) bg-surface p-8 text-center lg:p-14">
-        <span className="mx-auto grid size-16 place-items-center rounded-full bg-brand-tint text-brand">
+        <span className="mx-auto grid size-16 place-items-center rounded-full bg-brand-tint text-brand-bright">
           <CircleCheck className="size-8" aria-hidden />
         </span>
         <h2 className="display-md mt-7">Request received</h2>
         <p className="mx-auto mt-4 max-w-[48ch] leading-relaxed text-muted">
-          Thanks {draft.fullName.split(" ")[0] || "for that"} — we have your request
+          Thanks {draft.fullName.split(" ")[0] || "for that"}. We have your request
           for {selectedCar?.name ?? "a vehicle"} from {draft.pickupDate}. Someone
           will call you on {draft.phone} within the hour to confirm availability.
           Nothing is charged until then.
@@ -170,8 +190,8 @@ export function BookingForm({ cars }: { cars: Car[] }) {
                   disabled={index > stepIndex}
                   className={cn(
                     "flex w-full items-center justify-center gap-2 rounded-full py-3 text-sm font-semibold transition-colors duration-200",
-                    current && "bg-ink text-white",
-                    done && "text-brand hover:bg-surface-alt",
+                    current && "bg-brand text-white",
+                    done && "text-brand-bright hover:bg-field",
                     !current && !done && "text-muted",
                   )}
                 >
@@ -188,7 +208,7 @@ export function BookingForm({ cars }: { cars: Car[] }) {
         </ol>
 
         <div className="mt-(--gap) rounded-(--radius-card) bg-surface p-6 lg:p-8">
-          {/* Step 1 — trip */}
+          {/* Step 1 - trip */}
           {step === "trip" ? (
             <div>
               <h2 className="font-display text-xl font-bold uppercase">Your trip</h2>
@@ -214,51 +234,25 @@ export function BookingForm({ cars }: { cars: Car[] }) {
                   </Select>
                 </Field>
 
-                <Field label="Pickup location" htmlFor="pickup">
+                {/* One office, so there is nothing to choose between for the
+                    return. The only real question is whether the vehicle is
+                    collected here or delivered. */}
+                <Field label="Pickup and return" htmlFor="pickup" className="sm:col-span-2">
                   <Select
                     id="pickup"
                     value={draft.pickupLocation}
                     onChange={(event) => {
                       set("pickupLocation", event.target.value);
-                      if (draft.sameReturnLocation) set("dropoffLocation", event.target.value);
+                      set("dropoffLocation", event.target.value);
                     }}
                   >
-                    {locationNames.map((name) => (
+                    {pickupOptions.map((name) => (
                       <option key={name} value={name}>
                         {name}
                       </option>
                     ))}
                   </Select>
                 </Field>
-
-                <Field label="Return location" htmlFor="dropoff">
-                  <Select
-                    id="dropoff"
-                    value={draft.dropoffLocation}
-                    disabled={draft.sameReturnLocation}
-                    onChange={(event) => set("dropoffLocation", event.target.value)}
-                    className={draft.sameReturnLocation ? "opacity-55" : undefined}
-                  >
-                    {locationNames.map((name) => (
-                      <option key={name} value={name}>
-                        {name}
-                      </option>
-                    ))}
-                  </Select>
-                </Field>
-
-                <label className="flex items-center gap-2.5 text-sm sm:col-span-2">
-                  <input
-                    type="checkbox"
-                    checked={draft.sameReturnLocation}
-                    onChange={(event) => {
-                      set("sameReturnLocation", event.target.checked);
-                      if (event.target.checked) set("dropoffLocation", draft.pickupLocation);
-                    }}
-                    className="size-4 rounded accent-brand"
-                  />
-                  <span className="text-ink-soft">Return to the same location</span>
-                </label>
 
                 <Field label="Pickup date" htmlFor="pickup-date">
                   <Input
@@ -301,7 +295,7 @@ export function BookingForm({ cars }: { cars: Car[] }) {
             </div>
           ) : null}
 
-          {/* Step 2 — vehicle */}
+          {/* Step 2 - vehicle */}
           {step === "vehicle" ? (
             <div>
               <h2 className="font-display text-xl font-bold uppercase">
@@ -324,12 +318,12 @@ export function BookingForm({ cars }: { cars: Car[] }) {
                       aria-pressed={active}
                       className={cn(
                         "flex items-center gap-4 rounded-(--radius-inner) p-3 text-left transition-colors duration-200",
-                        active ? "bg-ink text-white" : "bg-surface-alt hover:bg-line/60",
+                        active ? "bg-brand text-white" : "bg-field hover:bg-field-hover",
                         !car.available && "cursor-not-allowed opacity-45",
                       )}
                     >
-                      <span className="relative size-20 shrink-0 overflow-hidden rounded-(--radius-chip) bg-white/80">
-                        <CarImage src={car.images[0]} alt={car.name} sizes="80px" inset={false} />
+                      <span className="relative size-20 shrink-0 overflow-hidden rounded-(--radius-chip) bg-surface-alt">
+                        <CarImage src={car.images[0]} alt={car.name} sizes="80px" />
                       </span>
                       <span className="min-w-0 flex-1">
                         <span className="block truncate font-display text-base font-bold uppercase">
@@ -338,7 +332,7 @@ export function BookingForm({ cars }: { cars: Car[] }) {
                         <span
                           className={cn(
                             "mt-0.5 flex items-center gap-1.5 text-sm",
-                            active ? "text-white/55" : "text-muted",
+                            active ? "text-muted" : "text-muted",
                           )}
                         >
                           <Users className="size-3.5" aria-hidden />
@@ -351,7 +345,7 @@ export function BookingForm({ cars }: { cars: Car[] }) {
                           <span
                             className={cn(
                               "ml-1 font-sans text-sm font-medium",
-                              active ? "text-white/50" : "text-muted",
+                              active ? "text-muted" : "text-muted",
                             )}
                           >
                             / day
@@ -394,7 +388,7 @@ export function BookingForm({ cars }: { cars: Car[] }) {
             </div>
           ) : null}
 
-          {/* Step 3 — details */}
+          {/* Step 3 - details */}
           {step === "details" ? (
             <div>
               <h2 className="font-display text-xl font-bold uppercase">Your details</h2>
@@ -469,7 +463,7 @@ export function BookingForm({ cars }: { cars: Car[] }) {
             </div>
           ) : null}
 
-          {/* Step 4 — review */}
+          {/* Step 4 - review */}
           {step === "review" ? (
             <div>
               <h2 className="font-display text-xl font-bold uppercase">
@@ -486,7 +480,7 @@ export function BookingForm({ cars }: { cars: Car[] }) {
                     label: "Service",
                     value:
                       serviceOptions.find((item) => item.value === draft.serviceType)
-                        ?.label ?? "—",
+                        ?.label ?? "Not given",
                   },
                   { label: "Vehicle", value: selectedCar?.name ?? "Not selected" },
                   {
@@ -498,8 +492,8 @@ export function BookingForm({ cars }: { cars: Car[] }) {
                     value: `${draft.dropoffLocation} · ${draft.returnDate} at ${draft.returnTime}`,
                   },
                   { label: "Duration", value: `${days} ${days === 1 ? "day" : "days"}` },
-                  { label: "Name", value: draft.fullName || "—" },
-                  { label: "Contact", value: `${draft.phone || "—"} · ${draft.email || "—"}` },
+                  { label: "Name", value: draft.fullName || "Not given" },
+                  { label: "Contact", value: `${draft.phone || "Not given"} · ${draft.email || "Not given"}` },
                   {
                     label: "Extras",
                     value:
@@ -510,7 +504,7 @@ export function BookingForm({ cars }: { cars: Car[] }) {
                             .join(", ")
                         : "None",
                   },
-                  { label: "Notes", value: draft.notes || "—" },
+                  { label: "Notes", value: draft.notes || "Not given" },
                 ].map((row, index) => (
                   <div key={row.label}>
                     {index > 0 ? <div className="rule" /> : null}
@@ -524,7 +518,7 @@ export function BookingForm({ cars }: { cars: Car[] }) {
 
               <p className="mt-6 text-sm leading-relaxed text-muted">
                 By confirming you agree to our{" "}
-                <Link href="/terms" className="font-medium text-brand hover:underline">
+                <Link href="/terms" className="font-medium text-brand-bright hover:underline">
                   rental terms
                 </Link>
                 . A refundable deposit of {formatPrice(totals.deposit)} is collected
@@ -564,62 +558,62 @@ export function BookingForm({ cars }: { cars: Car[] }) {
       {/* Summary */}
       <aside className="col-span-4 mt-(--gap) md:col-span-8 lg:col-span-4 lg:mt-0">
         <div className="lg:sticky lg:top-28">
-          <div className="rounded-(--radius-card) bg-ink p-6 text-white lg:p-7">
+          <div className="p-6 lg:p-7">
             <h2 className="font-display text-lg font-bold uppercase">Your booking</h2>
 
             {selectedCar ? (
               <div className="mt-5 flex items-center gap-4">
-                <span className="relative size-16 shrink-0 overflow-hidden rounded-(--radius-chip) bg-white/10">
+                <span className="relative size-16 shrink-0 overflow-hidden rounded-(--radius-chip) bg-field">
                   <CarImage
                     src={selectedCar.images[0]}
                     alt={selectedCar.name}
                     sizes="64px"
-                    inset={false}
+                   
                   />
                 </span>
                 <div className="min-w-0">
                   <p className="truncate font-display font-bold uppercase">
                     {selectedCar.name}
                   </p>
-                  <p className="text-sm text-white/50">{selectedCar.tagline}</p>
+                  <p className="text-sm text-muted">{selectedCar.tagline}</p>
                 </div>
               </div>
             ) : (
-              <p className="mt-5 text-sm text-white/50">
+              <p className="mt-5 text-sm text-muted">
                 No vehicle selected yet. Pick one in step two and the estimate
                 appears here.
               </p>
             )}
 
-            <div className="mt-6 h-px bg-white/10" />
+            <div className="mt-6 h-px bg-line" />
 
             <dl className="mt-6 space-y-3 text-sm">
               <div className="flex items-baseline justify-between gap-4">
-                <dt className="text-white/50">Duration</dt>
+                <dt className="text-muted">Duration</dt>
                 <dd className="font-semibold">
                   {days} {days === 1 ? "day" : "days"}
                 </dd>
               </div>
               <div className="flex items-baseline justify-between gap-4">
-                <dt className="text-white/50">Vehicle</dt>
+                <dt className="text-muted">Vehicle</dt>
                 <dd className="font-semibold">{formatPrice(totals.vehicle)}</dd>
               </div>
               <div className="flex items-baseline justify-between gap-4">
-                <dt className="text-white/50">Extras</dt>
+                <dt className="text-muted">Extras</dt>
                 <dd className="font-semibold">{formatPrice(totals.extras)}</dd>
               </div>
             </dl>
 
-            <div className="mt-6 h-px bg-white/10" />
+            <div className="mt-6 h-px bg-line" />
 
             <div className="mt-6 flex items-end justify-between gap-4">
-              <span className="text-white/50">Estimated total</span>
+              <span className="text-muted">Estimated total</span>
               <span className="font-display text-3xl font-extrabold leading-none">
                 {formatPrice(totals.total)}
               </span>
             </div>
-            <p className="mt-3 text-sm leading-relaxed text-white/40">
-              Includes insurance and the free kilometre allowance. Refundable
+            <p className="mt-3 text-sm leading-relaxed text-muted">
+              Includes insurance and unlimited kilometres. Refundable
               deposit of {formatPrice(totals.deposit)} is separate.
             </p>
           </div>

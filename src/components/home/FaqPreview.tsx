@@ -34,7 +34,7 @@ export async function FaqPreview() {
                 href={`https://wa.me/${site.whatsapp.replace(/[^0-9]/g, "")}`}
                 target="_blank"
                 rel="noreferrer"
-                className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-ink px-6 font-semibold text-white transition-colors hover:bg-charcoal-soft"
+                className="inline-flex h-12 items-center justify-center gap-2 rounded-full bg-contrast px-6 font-semibold text-white transition-colors hover:bg-charcoal-soft"
               >
                 <MessageCircle className="size-4" aria-hidden />
                 Ask on WhatsApp

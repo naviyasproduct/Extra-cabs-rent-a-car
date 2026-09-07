@@ -2,12 +2,17 @@
 
 import { useState } from "react";
 import { CarImage } from "@/components/common/CarImage";
+import { MAX_VEHICLE_IMAGES } from "@/types";
 import { Badge } from "@/components/ui/Badge";
 import { cn } from "@/lib/utils";
 
 /**
  * Vehicle gallery. One large plate plus a thumbnail rail beneath it, both
  * using the inner radius so they read as one unit inside the page slab.
+ *
+ * Capped at MAX_VEHICLE_IMAGES. The fleet data already applies the same cap,
+ * so this is belt and braces for any caller passing its own array: past five
+ * the thumbnail rail wraps to a second row and unbalances the page.
  */
 export function CarGallery({
   images,
@@ -19,14 +24,15 @@ export function CarGallery({
   badge?: string;
 }) {
   const [active, setActive] = useState(0);
-  const shots = images.length > 0 ? images : ["/images/cars/placeholder.png"];
+  const capped = images.slice(0, MAX_VEHICLE_IMAGES);
+  const shots = capped.length > 0 ? capped : ["/images/cars/placeholder.png"];
 
   return (
     <div>
       <div className="relative aspect-[16/10] overflow-hidden rounded-(--radius-card) bg-surface-alt">
         <CarImage
           src={shots[active]}
-          alt={`${name} — view ${active + 1}`}
+          alt={`${name}, view ${active + 1}`}
           label={name}
           sizes="(max-width: 1024px) 100vw, 60vw"
           priority
@@ -42,7 +48,7 @@ export function CarGallery({
         <div className="mt-(--gap) grid grid-cols-3 gap-(--gap) sm:grid-cols-4">
           {shots.map((shot, index) => (
             <button
-              key={shot}
+              key={`${shot}-${index}`}
               type="button"
               onClick={() => setActive(index)}
               aria-label={`Show view ${index + 1} of ${name}`}
@@ -57,7 +63,6 @@ export function CarGallery({
                 alt=""
                 label={`View ${index + 1}`}
                 sizes="20vw"
-                inset={false}
               />
               {active === index ? (
                 <span

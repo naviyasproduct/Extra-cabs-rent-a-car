@@ -2,7 +2,7 @@ import type { NavLink } from "@/types";
 
 /**
  * Single source of truth for company details used across the site.
- * PLACEHOLDER VALUES — swap these for the real ones before showing the
+ * PLACEHOLDER VALUES - swap these for the real ones before showing the
  * site publicly. Everything here is read from components, never hardcoded.
  */
 export const site = {
@@ -20,16 +20,21 @@ export const site = {
   email: "hello@extracabs.lk",
   bookingEmail: "bookings@extracabs.lk",
 
+  /**
+   * The one and only location. There are no branches.
+   * The postal code is not known yet; leave it blank rather than guessing,
+   * the renderers below drop empty parts.
+   */
   address: {
-    line1: "No. 128, Galle Road",
-    line2: "Dehiwala",
-    city: "Colombo",
+    line1: "653 Samurdhi Mawatha",
+    line2: "",
+    city: "Heiyanthuduwa",
     country: "Sri Lanka",
-    postal: "10350",
+    postal: "",
   },
 
   hours: {
-    office: "Mon – Sat, 8.00 am – 8.00 pm",
+    office: "Mon to Sat, 8.00 am to 8.00 pm",
     support: "24 hours, every day",
   },
 
@@ -46,7 +51,55 @@ export const site = {
     { value: "12k", suffix: "+", label: "Completed rentals" },
     { value: "4.8", suffix: "/5", label: "Average customer rating" },
   ],
+
+  /**
+   * Office hours in machine form, for schema.org openingHoursSpecification.
+   * Keep in sync with `hours.office` above, which is the version people read.
+   */
+  openingHours: {
+    days: [
+      "Monday",
+      "Tuesday",
+      "Wednesday",
+      "Thursday",
+      "Friday",
+      "Saturday",
+    ],
+    opens: "08:00",
+    closes: "20:00",
+  },
 } as const;
+
+/**
+ * Canonical origin, with no trailing slash. Every absolute URL the site emits
+ * (canonicals, sitemap, Open Graph, JSON-LD) is built from this one value.
+ *
+ * Set NEXT_PUBLIC_SITE_URL in the Vercel project to the real domain. The
+ * fallback is only so local builds produce valid absolute URLs.
+ */
+export const siteUrl: string = (
+  process.env.NEXT_PUBLIC_SITE_URL ?? "https://extracabs.lk"
+).replace(/\/+$/, "");
+
+/**
+ * The address as display lines, with empty parts dropped.
+ *
+ * Parts of the address are genuinely unknown (there is no postal code yet), and
+ * a blank field must not render as an empty line or a stray comma. Everything
+ * that shows the address reads one of these two, so filling a missing part in
+ * later fixes every page at once.
+ */
+export const addressLines: string[] = [
+  site.address.line1,
+  site.address.line2,
+  [site.address.city, site.address.postal].filter(Boolean).join(" "),
+  site.address.country,
+]
+  .map((line) => line.trim())
+  .filter((line) => line.length > 0);
+
+/** The same address on one line, for inline copy and structured data. */
+export const addressOneLine: string = addressLines.join(", ");
 
 export const mainNav: NavLink[] = [
   { label: "Home", href: "/" },

@@ -34,7 +34,7 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <section className="bg-paper pt-[calc(4.75rem+var(--gap))] sm:pt-[calc(5.5rem+var(--gap))]">
+    <section className="pt-[calc(4.75rem+var(--gap))] sm:pt-[calc(5.5rem+var(--gap))]">
       <Shell>
         <div
           className={cn(
@@ -46,7 +46,7 @@ export function PageHeader({
             <nav aria-label="Breadcrumb" className="mb-7">
               <ol className="flex flex-wrap items-center gap-1.5 text-sm text-muted">
                 <li>
-                  <Link href="/" className="transition-colors hover:text-brand">
+                  <Link href="/" className="transition-colors hover:text-brand-bright">
                     Home
                   </Link>
                 </li>
@@ -54,7 +54,7 @@ export function PageHeader({
                   <li key={crumb.label} className="flex items-center gap-1.5">
                     <ChevronRight className="size-3.5 text-line-strong" aria-hidden />
                     {crumb.href ? (
-                      <Link href={crumb.href} className="transition-colors hover:text-brand">
+                      <Link href={crumb.href} className="transition-colors hover:text-brand-bright">
                         {crumb.label}
                       </Link>
                     ) : (
