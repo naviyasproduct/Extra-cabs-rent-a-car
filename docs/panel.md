@@ -111,6 +111,43 @@ Data lives in `.data/panel.json`, gitignored. Delete it to reset.
 
 ---
 
+## Two caching traps, both already hit
+
+Panel edits were saving to the store but never showing on the website. Two
+separate causes, and fixing only one of them looked like no fix at all.
+
+### 1. The store was cached per bundle
+
+Next compiles pages, route handlers and server actions into **separate server
+bundles**, and each gets its own instance of every module. `store.ts` cached
+the parsed JSON in a module-level variable, so the public page held a copy from
+its first request and never saw anything the panel wrote afterwards.
+
+`load()` now reads the file on every call. The in-memory copy is only a
+fallback for when the disk cannot be written. A JSON parse per read is nothing
+at this scale, and it removes the whole class of bug.
+
+### 2. The public pages were prerendered at build
+
+`/`, `/fleet`, `/fleet/[slug]` and `/booking` were static, baked at build time
+from whatever the store held then. **`revalidatePath` did not help**: all three
+forms were tried, including the concrete path, and none of them busted fully
+static build output.
+
+The public readers in `src/lib/fleet.ts` now call `await connection()`, which
+is exactly the case the Next docs describe for synchronous database reads
+completing during prerendering. Any page reading live fleet data becomes
+request-time automatically, including pages added later. It is there rather
+than `export const dynamic` on six routes, which is six chances to forget.
+
+`publicCarSlugs()` deliberately does NOT call it: `generateStaticParams` and
+the sitemap run at build, where there is no request to wait for.
+
+`/about`, `/contact`, `/faq`, `/terms` and `/privacy` read no fleet data and
+are still static.
+
+---
+
 ## Known limits
 
 - **The store is a scaffold.** One JSON file, no transactions, no concurrency
@@ -130,3 +167,9 @@ Data lives in `.data/panel.json`, gitignored. Delete it to reset.
   stock photos. `fleet.photos` exists as a scope with nothing behind it.
 - **Break-glass access is not built.** If the owner is unreachable the employee
   is blocked, which is the open decision in HANDOVER section 7c.
+- **A booked vehicle 404s its own detail page.** It leaves the list, the
+  sitemap and the related-vehicle rails, and `/fleet/<slug>` returns 404 until
+  it is free again. That is stricter than "cannot see it in the list", and it
+  means a URL Google has indexed goes 404 for the length of a hire. Worth a
+  decision: the alternative is to keep the page reachable and show "currently
+  on hire" while still hiding it from every list.

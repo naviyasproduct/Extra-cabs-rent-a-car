@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import type { Car, CarCategory } from "@/types";
 import { MAX_VEHICLE_IMAGES } from "@/types";
 import { getCars as catalogueCars } from "@/lib/data/cars";
@@ -10,6 +11,14 @@ import type { CreatedVehicle, VehicleOverride } from "@/lib/panel/types";
  * SERVER ONLY. It reads the panel store, which touches node:fs.
  * `src/lib/data/cars.ts` stays pure so client components can keep importing
  * `filterCars` and the category helpers from it.
+ *
+ * REQUEST TIME, NOT BUILD TIME. The store is a synchronous file read, which
+ * happily completes during prerendering, so without connection() Next bakes
+ * the fleet into static HTML at build and the site never sees a panel edit
+ * again. Calling connection() in these readers opts every page that shows
+ * fleet data out of prerendering automatically, including pages added later.
+ * That is deliberately here rather than `export const dynamic` on six separate
+ * routes, which is six chances to forget.
  *
  * Two audiences, and the difference matters:
  *   listVehicles()   everything a staff member should see, including vehicles
@@ -124,36 +133,57 @@ export async function staffVehicles(includeDeleted = false): Promise<LiveVehicle
  * A vehicle that is out on hire or deleted does not appear at all. This is what
  * "mark it booked and it drops off the site" means: not a badge, an absence.
  */
-export async function publicCars(): Promise<Car[]> {
+/**
+ * The customer-visible list, without the request-time marker.
+ *
+ * Private, because build-time callers need it and page callers must not use it.
+ */
+async function listedCars(): Promise<Car[]> {
   const all = await listVehicles();
   return all
     .filter((v) => v.deletedAt === null && v.car.available)
     .map((v) => v.car);
 }
 
-export async function publicCarBySlug(slug: string): Promise<Car | null> {
-  const cars = await publicCars();
-  return cars.find((car) => car.slug === slug) ?? null;
+export async function publicCars(): Promise<Car[]> {
+  await connection();
+  return listedCars();
 }
 
+export async function publicCarBySlug(slug: string): Promise<Car | null> {
+  await connection();
+  return (await listedCars()).find((car) => car.slug === slug) ?? null;
+}
+
+/**
+ * Build-time only: generateStaticParams and the sitemap.
+ *
+ * Deliberately WITHOUT connection(). Those run during the build, where there is
+ * no request to wait for, so calling it there would be wrong. Slugs are also
+ * the one thing that is safe to precompute: the page body still reads live data
+ * per request, and an unknown slug renders on demand anyway.
+ */
 export async function publicCarSlugs(): Promise<string[]> {
-  return (await publicCars()).map((car) => car.slug);
+  return (await listedCars()).map((car) => car.slug);
 }
 
 export async function publicFeaturedCars(limit = 6): Promise<Car[]> {
-  return (await publicCars()).filter((car) => car.featured).slice(0, limit);
+  await connection();
+  return (await listedCars()).filter((car) => car.featured).slice(0, limit);
 }
 
 /** Featured first, then the rest, so a grid of `limit` always fills. */
 export async function publicShowcaseCars(limit = 8): Promise<Car[]> {
-  const cars = await publicCars();
+  await connection();
+  const cars = await listedCars();
   const featured = cars.filter((car) => car.featured);
   const rest = cars.filter((car) => !car.featured);
   return [...featured, ...rest].slice(0, limit);
 }
 
 export async function publicRelatedCars(slug: string, limit = 3): Promise<Car[]> {
-  const cars = await publicCars();
+  await connection();
+  const cars = await listedCars();
   const current = cars.find((car) => car.slug === slug);
   if (!current) return cars.slice(0, limit);
 
@@ -167,7 +197,8 @@ export async function publicRelatedCars(slug: string, limit = 3): Promise<Car[]>
 }
 
 export async function publicCategoryCounts(): Promise<Record<string, number>> {
-  const cars = await publicCars();
+  await connection();
+  const cars = await listedCars();
   return cars.reduce<Record<string, number>>(
     (acc, car) => {
       acc.all = (acc.all ?? 0) + 1;

@@ -111,33 +111,46 @@ function seed(): PanelData {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Held across requests in dev, and the only copy when the filesystem is
- * read-only. Module state survives for the life of the server process.
+ * Fallback copy, used only when the filesystem cannot be written.
+ *
+ * It is deliberately NOT a cache of the file. Next compiles pages, route
+ * handlers and server actions into separate server bundles, and each one gets
+ * its own instance of this module with its own module-level state. An
+ * in-process cache therefore goes stale the instant a different bundle writes:
+ * the panel would save an edit and the public page, holding its own copy from
+ * first load, would keep serving the old value forever.
+ *
+ * That is a real bug this code had. The file is the single source of truth, so
+ * every read goes to the file.
  */
 let memory: PanelData | null = null;
 let diskWritable = true;
 
 function load(): PanelData {
-  if (memory) return memory;
-
-  try {
-    const raw = fs.readFileSync(DATA_FILE, "utf8");
-    memory = JSON.parse(raw) as PanelData;
-  } catch {
-    memory = seed();
-    persist(memory);
+  if (diskWritable) {
+    try {
+      return JSON.parse(fs.readFileSync(DATA_FILE, "utf8")) as PanelData;
+    } catch {
+      // No file yet on first run, or the disk is unreadable. Fall through.
+    }
   }
 
+  if (memory) return memory;
+
+  memory = seed();
+  persist(memory);
   return memory;
 }
 
 function persist(data: PanelData): void {
+  memory = data;
   if (!diskWritable) return;
   try {
     fs.mkdirSync(DATA_DIR, { recursive: true });
     fs.writeFileSync(DATA_FILE, JSON.stringify(data, null, 2), "utf8");
   } catch {
-    // Read-only filesystem. Keep going in memory rather than failing the request.
+    // Read-only filesystem, which is the case on Vercel. Keep going in memory
+    // rather than failing the request; it just will not survive a redeploy.
     diskWritable = false;
   }
 }
