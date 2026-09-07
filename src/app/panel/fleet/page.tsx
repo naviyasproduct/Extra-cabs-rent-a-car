@@ -127,6 +127,7 @@ export default async function PanelFleet({
               </select>
             </label>
             <FormField label="Seats" name="seats" type="number" placeholder="5" />
+            <FormField label="Doors" name="doors" type="number" placeholder="5" />
             <label className="flex flex-col gap-1">
               <span className="text-xs uppercase tracking-[0.12em] text-muted">Fuel</span>
               <select name="fuel" className="h-11 bg-field px-3 text-sm" defaultValue="petrol">

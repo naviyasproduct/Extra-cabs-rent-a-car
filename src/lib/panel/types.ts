@@ -190,6 +190,7 @@ export interface VehicleOverride {
   deposit?: number;
   withDriverDaily?: number | null;
   seats?: number;
+  doors?: number;
   /** ISO timestamp. Soft delete: hidden everywhere, restorable for 30 days. */
   deletedAt?: string | null;
 }

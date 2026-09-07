@@ -78,6 +78,7 @@ export default async function PanelVehicle({
         <fieldset disabled={!editable} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Field label="Name" name="name" defaultValue={car.name} />
           <Field label="Seats" name="seats" type="number" defaultValue={car.specs.seats} />
+          <Field label="Doors" name="doors" type="number" defaultValue={car.specs.doors} />
           <Field label="Daily rate LKR" name="daily" type="number" defaultValue={car.pricing.daily} />
           <Field label="Weekly rate LKR" name="weekly" type="number" defaultValue={car.pricing.weekly} />
           <Field label="Monthly rate LKR" name="monthly" type="number" defaultValue={car.pricing.monthly} />

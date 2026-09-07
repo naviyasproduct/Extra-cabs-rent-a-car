@@ -27,6 +27,11 @@ import type {
  * list drops it on the next request.
  */
 
+/** Keeps a typed-in spec inside something a real vehicle could have. */
+function clamp(value: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, Math.round(value)));
+}
+
 function refreshPublicFleet() {
   revalidatePath("/");
   revalidatePath("/fleet");
@@ -183,7 +188,8 @@ export async function updateVehicleAction(formData: FormData) {
 
   const next = {
     name: String(formData.get("name") ?? vehicle.car.name).trim(),
-    seats: num("seats", vehicle.car.specs.seats),
+    seats: clamp(num("seats", vehicle.car.specs.seats), 1, 60),
+    doors: clamp(num("doors", vehicle.car.specs.doors), 1, 8),
     daily: num("daily", vehicle.car.pricing.daily),
     weekly: num("weekly", vehicle.car.pricing.weekly),
     monthly: num("monthly", vehicle.car.pricing.monthly),
@@ -226,6 +232,7 @@ export async function updateVehicleAction(formData: FormData) {
   const changes: string[] = [];
   if (next.name !== before.name) changes.push(`name to ${next.name}`);
   if (next.seats !== before.specs.seats) changes.push(`seats to ${next.seats}`);
+  if (next.doors !== before.specs.doors) changes.push(`doors to ${next.doors}`);
   if (next.daily !== before.pricing.daily)
     changes.push(`daily ${before.pricing.daily} to ${next.daily}`);
   if (next.weekly !== before.pricing.weekly)
@@ -298,8 +305,8 @@ export async function createVehicleAction(formData: FormData) {
       year: num("year", new Date().getFullYear()),
       category: String(formData.get("category") ?? "hatchback"),
       description: String(formData.get("description") ?? "").trim(),
-      seats: num("seats", 5),
-      doors: 5,
+      seats: clamp(num("seats", 5), 1, 60),
+      doors: clamp(num("doors", 5), 1, 8),
       luggage: 2,
       transmission:
         String(formData.get("transmission") ?? "automatic") === "manual"

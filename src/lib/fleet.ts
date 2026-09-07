@@ -26,7 +26,11 @@ function applyOverride(car: Car, override: VehicleOverride | undefined): Car {
     name: override.name ?? car.name,
     available: override.available ?? car.available,
     featured: override.featured ?? car.featured,
-    specs: { ...car.specs, seats: override.seats ?? car.specs.seats },
+    specs: {
+      ...car.specs,
+      seats: override.seats ?? car.specs.seats,
+      doors: override.doors ?? car.specs.doors,
+    },
     pricing: {
       daily: override.daily ?? car.pricing.daily,
       weekly: override.weekly ?? car.pricing.weekly,

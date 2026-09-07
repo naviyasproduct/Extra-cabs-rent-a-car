@@ -121,6 +121,11 @@ Data lives in `.data/panel.json`, gitignored. Delete it to reset.
 - **No SMS and no WhatsApp.** The OTP is shown on the owner's screen.
 - **Sessions are not revocable** beyond the 12 hour expiry, because there is no
   session table yet.
+- **Only some specs are editable.** Name, seats, doors, the four prices and the
+  home-page flag. Luggage, transmission, fuel and engine size are set when a
+  vehicle is created but cannot be changed afterwards, and luggage is still
+  fixed at 2 on create. They show on the public vehicle page, so they are the
+  same gap doors had.
 - **Photo upload is not built.** Vehicles added in the panel reuse the three
   stock photos. `fleet.photos` exists as a scope with nothing behind it.
 - **Break-glass access is not built.** If the owner is unreachable the employee
