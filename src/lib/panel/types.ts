@@ -19,6 +19,14 @@ export interface StaffUser {
   createdAt: string;
   /** Shown once when the owner creates an account, then cleared. */
   oneTimePassword: string | null;
+  /**
+   * Mobile number, as the person typed it. Normalised to 94XXXXXXXXX only at
+   * the moment of sending, so what the owner entered is what he sees again.
+   * Empty means this person is simply not reachable by SMS yet.
+   */
+  phone: string;
+  /** Off switch per person. Undefined counts as on, for rows written before this. */
+  smsAlerts: boolean;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -234,6 +242,45 @@ export interface CreatedVehicle {
 }
 
 /* -------------------------------------------------------------------------- */
+/* Outbound SMS                                                                */
+/* -------------------------------------------------------------------------- */
+
+export type SmsKind = "booking.created" | "test";
+
+export type SmsStatus =
+  /** Accepted by Text.lk. */
+  | "sent"
+  /** Text.lk or the network refused it. `error` says why. */
+  | "failed"
+  /** No credentials configured, so nothing was attempted. */
+  | "skipped";
+
+/**
+ * One send attempt, one row.
+ *
+ * The plan asks for the provider message id to be stored so delivery can be
+ * audited. This is that record, and it is also the only way anyone finds out
+ * that the SMS credit ran out: a booking still succeeds, quietly, and the
+ * failure shows up here.
+ */
+export interface SmsMessage {
+  id: string;
+  at: string;
+  /** Normalised 94XXXXXXXXX. */
+  to: string;
+  /** Which staff member, when the recipient was one of ours. */
+  staffId: string | null;
+  kind: SmsKind;
+  body: string;
+  /** Billable segments at send time. See measure() in lib/sms/textlk.ts. */
+  segments: number;
+  status: SmsStatus;
+  /** Text.lk's uid. Quote this at them when a message goes missing. */
+  providerId: string | null;
+  error: string | null;
+}
+
+/* -------------------------------------------------------------------------- */
 
 export interface PanelData {
   staff: StaffUser[];
@@ -245,4 +292,5 @@ export interface PanelData {
   enquiries: Enquiry[];
   vehicleOverrides: Record<string, VehicleOverride>;
   createdVehicles: CreatedVehicle[];
+  messages: SmsMessage[];
 }

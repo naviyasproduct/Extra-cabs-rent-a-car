@@ -93,6 +93,10 @@ function seed(): PanelData {
         active: true,
         createdAt: now,
         oneTimePassword: null,
+        // Blank on purpose. Nobody gets a booking alert until a real number is
+        // typed into /panel/team, and a placeholder here would text a stranger.
+        phone: "",
+        smsAlerts: true,
       };
     }),
     shifts: [],
@@ -101,6 +105,7 @@ function seed(): PanelData {
     audit: [],
     bookings: [],
     enquiries: [],
+    messages: [],
     vehicleOverrides: {},
     createdVehicles: [],
   };
@@ -126,10 +131,27 @@ function seed(): PanelData {
 let memory: PanelData | null = null;
 let diskWritable = true;
 
+/**
+ * Fill in fields added after a store was already written.
+ *
+ * The file on disk was written by an older shape of the code, so a new array
+ * is `undefined` there and the first `.push()` on it throws. Postgres would
+ * call this a migration; here it is four lines that run on every read. Only
+ * ever add defaults, never overwrite what is already stored.
+ */
+function hydrate(data: PanelData): PanelData {
+  data.messages ??= [];
+  for (const staff of data.staff) {
+    staff.phone ??= "";
+    staff.smsAlerts ??= true;
+  }
+  return data;
+}
+
 function load(): PanelData {
   if (diskWritable) {
     try {
-      return JSON.parse(fs.readFileSync(DATA_FILE, "utf8")) as PanelData;
+      return hydrate(JSON.parse(fs.readFileSync(DATA_FILE, "utf8")) as PanelData);
     } catch {
       // No file yet on first run, or the disk is unreadable. Fall through.
     }

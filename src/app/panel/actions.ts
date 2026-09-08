@@ -3,12 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { requireOwner, requireStaff, assertCanWrite, WindowRequiredError } from "@/lib/panel/guard";
 import { SESSION_COOKIE } from "@/lib/panel/auth";
 import { hashPassword, newId, readData, writeData } from "@/lib/panel/store";
 import { closeShift, openShift, markAway } from "@/lib/panel/time";
 import { closeWindow, redeemCode, requestWindow, scopeLabel } from "@/lib/panel/window";
 import { vehicleBySlug } from "@/lib/fleet";
+import { notifyNewBooking, sendTestSms } from "@/lib/sms/notify";
+import { toMsisdn } from "@/lib/sms/textlk";
 import {
   clamp,
   featureLines,
@@ -538,6 +541,18 @@ export async function createBookingAction(input: {
     data.bookings.unshift(booking);
   });
 
+  // Text the owner and the staff, after the response has gone back.
+  //
+  // after() rather than await: the booking is already saved, so the customer
+  // should see "request sent" immediately instead of waiting on an SMS gateway.
+  // If Text.lk is slow or down, that is our problem to see in the message log,
+  // not theirs to sit and watch. The vehicle lookup is in here for the same
+  // reason. Nothing in notifyNewBooking() throws.
+  after(async () => {
+    const vehicle = booking.carSlug ? await vehicleBySlug(booking.carSlug) : null;
+    await notifyNewBooking(booking, vehicle?.car.name ?? null);
+  });
+
   revalidatePath("/panel/bookings");
   revalidatePath("/panel");
   return reference;
@@ -624,12 +639,18 @@ export async function createStaffAction(formData: FormData) {
   const owner = await requireOwner();
   const name = String(formData.get("name") ?? "").trim();
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
+  const phone = String(formData.get("phone") ?? "").trim();
 
   if (name.length === 0 || email.length === 0) {
     redirect(`/panel/team?error=${encodeURIComponent("Name and email are both needed.")}`);
   }
   if (readData().staff.some((s) => s.email === email)) {
     redirect(`/panel/team?error=${encodeURIComponent("That email already has an account.")}`);
+  }
+  // Optional, but if one is typed it has to be a real number. Saving a broken
+  // one looks like it worked and then silently never sends.
+  if (phone.length > 0 && toMsisdn(phone) === null) {
+    redirect(`/panel/team?error=${encodeURIComponent(`"${phone}" is not a Sri Lankan mobile number.`)}`);
   }
 
   // The one-time password the client chose: generated, shown once on this
@@ -652,12 +673,106 @@ export async function createStaffAction(formData: FormData) {
       active: true,
       createdAt: new Date().toISOString(),
       oneTimePassword: password,
+      phone,
+      smsAlerts: true,
     });
   });
 
   audit(owner.id, "staff.created", "staff", id, `Created an account for ${name}`);
   revalidatePath("/panel/team");
   redirect(`/panel/team?created=${id}`);
+}
+
+/* -------------------------------------------------------------------------- */
+/* SMS alerts, owner only                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Set or clear the number a person's booking alerts go to.
+ *
+ * The typed form is what gets stored, so the owner reads back what he entered.
+ * toMsisdn() is only used to reject nonsense here and to normalise at send
+ * time. An empty box is a legitimate value: it means stop texting this person.
+ */
+export async function setStaffPhoneAction(formData: FormData) {
+  const owner = await requireOwner();
+  const id = String(formData.get("id") ?? "");
+  const phone = String(formData.get("phone") ?? "").trim();
+
+  if (phone.length > 0 && toMsisdn(phone) === null) {
+    redirect(`/panel/team?error=${encodeURIComponent(`"${phone}" is not a Sri Lankan mobile number.`)}`);
+  }
+
+  const target = readData().staff.find((s) => s.id === id);
+  if (!target) return;
+
+  writeData((data) => {
+    const staff = data.staff.find((s) => s.id === id);
+    if (staff) staff.phone = phone;
+  });
+
+  // The number itself is not written into the audit summary. It is a personal
+  // detail and the log is read by both employees.
+  audit(
+    owner.id,
+    phone.length > 0 ? "staff.phone_set" : "staff.phone_cleared",
+    "staff",
+    id,
+    `${phone.length > 0 ? "Set" : "Cleared"} the alert number for ${target.name}`,
+  );
+  revalidatePath("/panel/team");
+}
+
+export async function setStaffAlertsAction(formData: FormData) {
+  const owner = await requireOwner();
+  const id = String(formData.get("id") ?? "");
+  const on = String(formData.get("on") ?? "") === "true";
+
+  const target = readData().staff.find((s) => s.id === id);
+  if (!target) return;
+
+  writeData((data) => {
+    const staff = data.staff.find((s) => s.id === id);
+    if (staff) staff.smsAlerts = on;
+  });
+
+  audit(
+    owner.id,
+    on ? "staff.alerts_on" : "staff.alerts_off",
+    "staff",
+    id,
+    `Turned booking alerts ${on ? "on" : "off"} for ${target.name}`,
+  );
+  revalidatePath("/panel/team");
+}
+
+/**
+ * Send one real text to one person.
+ *
+ * Awaited, not deferred with after(): the whole point is to stand there and
+ * find out whether it worked, so the result has to be in the store before the
+ * page re-renders.
+ */
+export async function sendTestSmsAction(formData: FormData) {
+  const owner = await requireOwner();
+  const id = String(formData.get("id") ?? "");
+
+  const target = readData().staff.find((s) => s.id === id);
+  const msisdn = toMsisdn(target?.phone ?? "");
+  if (!target || msisdn === null) {
+    redirect(`/panel/team?error=${encodeURIComponent("Save a valid mobile number first.")}`);
+  }
+
+  const row = await sendTestSms({ staffId: target.id, name: target.name, msisdn });
+
+  audit(
+    owner.id,
+    "sms.test_sent",
+    "staff",
+    id,
+    `Sent a test message to ${target.name} (${row?.status ?? "unknown"})`,
+  );
+  revalidatePath("/panel/team");
 }
 
 export async function setStaffActiveAction(formData: FormData) {

@@ -31,7 +31,7 @@ hashed with scrypt on first run so the store never holds plaintext.
 | `/panel/fleet` | Both | Mark booked or free, add, edit, remove, restore. Employees ask for a window from here. |
 | `/panel/fleet/[slug]` | Both | Edit one vehicle. Fields are locked for employees without a window. |
 | `/panel/enquiries` | Both | Shared inbox with threaded replies. |
-| `/panel/team` | Owner | Staff accounts, one-time passwords, timesheets, lifetime totals. |
+| `/panel/team` | Owner | Staff accounts, one-time passwords, timesheets, lifetime totals. Also the SMS alert numbers, the per-person on/off toggle, a test send and the message log. See [`sms.md`](./sms.md). |
 | `/panel/activity` | Both | Audit log. Employees see only their own. |
 
 ---
@@ -136,6 +136,8 @@ src/lib/panel/guard.ts    requireStaff / requireOwner / assertCanWrite
 src/lib/panel/time.ts     shifts, presence, sweeper, coverage
 src/lib/panel/window.ts   OTP lifecycle
 src/lib/panel/vehicle-form.ts  pure parsers for the vehicle forms
+src/lib/sms/textlk.ts     Text.lk gateway, phone numbers, segment counting
+src/lib/sms/notify.ts     who gets a booking alert, what it says, the log
 src/lib/fleet.ts          catalogue + overrides, public vs staff views
 src/proxy.ts              cookie check on /panel (NOT middleware.ts)
 src/app/999p7k/           sign in
@@ -192,7 +194,16 @@ are still static.
   improves when this becomes Postgres.
 - **On Vercel the writes fall back to memory** and reset on redeploy. The
   filesystem is read only there. This is meant to be run locally for now.
-- **No SMS and no WhatsApp.** The OTP is shown on the owner's screen.
+- **Booking alerts by SMS are built but dormant.** Every website booking texts
+  the owner and every staff member with a number saved, through Text.lk. It
+  sends nothing until `TEXTLK_API_TOKEN` and `TEXTLK_SENDER_ID` are set; until
+  then each attempt is logged as `skipped` and printed to the server console.
+  Full setup in [`sms.md`](./sms.md).
+- **The OTP is still not on SMS**, and there is no WhatsApp. The access code is
+  shown on the owner's screen for him to read out. The gateway module is now
+  written, so moving the OTP onto it is a small job.
+- **The customer is never texted**, only staff. Enquiries from the contact form
+  do not text anyone either.
 - **Sessions are not revocable** beyond the 12 hour expiry, because there is no
   session table yet.
 - **Add sets everything; edit sets most of it.** The add form now covers every

@@ -1,17 +1,22 @@
-import { CircleAlert, KeyRound, UserPlus } from "lucide-react";
+import { CircleAlert, KeyRound, MessageSquare, UserPlus } from "lucide-react";
 import { requireOwner } from "@/lib/panel/guard";
 import { readData } from "@/lib/panel/store";
 import {
   colomboDate,
+  colomboDateTime,
   formatDuration,
   shiftsForDate,
   summariseShift,
 } from "@/lib/panel/time";
+import { displayMsisdn, smsConfig, toMsisdn } from "@/lib/sms/textlk";
 import { DayTimeline } from "@/components/panel/DayTimeline";
 import {
   createStaffAction,
   dismissOneTimePasswordAction,
+  sendTestSmsAction,
   setStaffActiveAction,
+  setStaffAlertsAction,
+  setStaffPhoneAction,
 } from "../actions";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +47,15 @@ export default async function PanelTeam({
   const justCreated = created
     ? data.staff.find((s) => s.id === created)
     : undefined;
+
+  // Booking alerts. Everyone is listed, the owner included: this is a
+  // notification, not the timesheet, so the owner/employee split does not
+  // apply here. See notify.ts.
+  const { ready: smsReady } = smsConfig();
+  const recentMessages = (data.messages ?? []).slice(0, 8);
+  const alertCount = data.staff.filter(
+    (s) => s.active && s.smsAlerts !== false && toMsisdn(s.phone ?? "") !== null,
+  ).length;
 
   // Lifetime totals per person, so the owner has more than one day to look at.
   // Employees only: the owner keeps no shift and no presence record, so he has
@@ -206,6 +220,159 @@ export default async function PanelTeam({
         </table>
       </section>
 
+      {/* Who gets told about a booking */}
+      <section className="bg-tile p-5">
+        <h2 className="inline-flex items-center gap-2 font-display text-sm font-bold uppercase tracking-[0.14em]">
+          <MessageSquare className="size-4 text-brand-bright" aria-hidden />
+          Booking alerts by SMS
+        </h2>
+        <p className="mt-2 max-w-[64ch] text-sm text-muted">
+          Every booking taken on the website sends one text to everyone below,
+          you included. Sri Lankan mobiles only, in any of these forms: 077 123
+          4567, 0771234567 or +94 77 123 4567. Clear the box to stop texting
+          someone.
+        </p>
+
+        {!smsReady ? (
+          <p className="mt-4 bg-warning/12 px-4 py-3 text-sm text-warning">
+            The Text.lk gateway is not configured, so no text has actually left
+            the building. Set TEXTLK_API_TOKEN and TEXTLK_SENDER_ID, then
+            restart. Until then every message is written to the server log and
+            recorded below as skipped.
+          </p>
+        ) : alertCount === 0 ? (
+          <p className="mt-4 bg-warning/12 px-4 py-3 text-sm text-warning">
+            Nobody has a number saved, so bookings are arriving silently. Add at
+            least your own.
+          </p>
+        ) : null}
+
+        <ul className="mt-4 flex flex-col">
+          {data.staff.map((staff) => {
+            const msisdn = toMsisdn(staff.phone ?? "");
+            const on = staff.active && staff.smsAlerts !== false && msisdn !== null;
+
+            return (
+              <li
+                key={staff.id}
+                className="flex flex-wrap items-end gap-3 border-t border-line py-4 first:border-t-0"
+              >
+                <div className="min-w-[10rem] flex-1">
+                  <p className="font-display text-base font-bold uppercase">
+                    {staff.name}
+                  </p>
+                  <p className="text-xs text-muted">
+                    {staff.role}
+                    {staff.active ? "" : " · disabled"}
+                    {msisdn ? ` · ${displayMsisdn(msisdn)}` : " · no number"}
+                  </p>
+                </div>
+
+                <form action={setStaffPhoneAction} className="flex items-end gap-2">
+                  <input type="hidden" name="id" value={staff.id} />
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                      Mobile
+                    </span>
+                    <input
+                      name="phone"
+                      type="tel"
+                      inputMode="tel"
+                      autoComplete="off"
+                      defaultValue={staff.phone ?? ""}
+                      placeholder="077 123 4567"
+                      className="h-11 w-44 bg-field px-3 text-sm text-ink"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    className="h-11 rounded-full bg-field px-4 text-sm font-semibold transition-colors hover:bg-field-hover"
+                  >
+                    Save
+                  </button>
+                </form>
+
+                <form action={setStaffAlertsAction}>
+                  <input type="hidden" name="id" value={staff.id} />
+                  <input
+                    type="hidden"
+                    name="on"
+                    value={staff.smsAlerts === false ? "true" : "false"}
+                  />
+                  <button
+                    type="submit"
+                    className="h-11 rounded-full bg-field px-4 text-sm font-semibold transition-colors hover:bg-field-hover"
+                  >
+                    {staff.smsAlerts === false ? "Turn alerts on" : "Turn alerts off"}
+                  </button>
+                </form>
+
+                <form action={sendTestSmsAction}>
+                  <input type="hidden" name="id" value={staff.id} />
+                  <button
+                    type="submit"
+                    disabled={msisdn === null}
+                    className="h-11 rounded-full bg-field px-4 text-sm font-semibold transition-colors hover:bg-field-hover disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    Send a test
+                  </button>
+                </form>
+
+                <span
+                  className={
+                    "text-xs font-semibold uppercase tracking-[0.12em] " +
+                    (on ? "text-success" : "text-muted")
+                  }
+                >
+                  {on ? "Will be texted" : "Will not be texted"}
+                </span>
+              </li>
+            );
+          })}
+        </ul>
+
+        {recentMessages.length > 0 ? (
+          <div className="mt-6 border-t border-line pt-4">
+            <h3 className="font-display text-xs font-bold uppercase tracking-[0.14em] text-muted">
+              Last messages sent
+            </h3>
+            <ul className="mt-3 flex flex-col gap-2">
+              {recentMessages.map((message) => (
+                <li
+                  key={message.id}
+                  className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-xs"
+                >
+                  <span className="tabular-nums text-muted">
+                    {colomboDateTime(message.at)}
+                  </span>
+                  <span className="text-ink-soft">
+                    {nameFor(message.staffId ?? "")} · {displayMsisdn(message.to)}
+                  </span>
+                  <span
+                    className={
+                      "font-semibold uppercase tracking-[0.12em] " +
+                      (message.status === "sent"
+                        ? "text-success"
+                        : message.status === "failed"
+                          ? "text-brand-bright"
+                          : "text-muted")
+                    }
+                  >
+                    {message.status}
+                  </span>
+                  {message.segments > 1 ? (
+                    <span className="text-muted">{message.segments} segments</span>
+                  ) : null}
+                  {message.error ? (
+                    <span className="text-brand-bright">{message.error}</span>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
+      </section>
+
       {/* Add someone */}
       <section className="bg-tile p-5">
         <h2 className="inline-flex items-center gap-2 font-display text-sm font-bold uppercase tracking-[0.14em]">
@@ -216,7 +383,10 @@ export default async function PanelTeam({
           A one-time password is generated and shown once on this screen. There
           is no email yet, so hand it over in person.
         </p>
-        <form action={createStaffAction} className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+        <form
+          action={createStaffAction}
+          className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto]"
+        >
           <label className="flex flex-col gap-1">
             <span className="text-xs uppercase tracking-[0.12em] text-muted">Name</span>
             <input
@@ -231,6 +401,18 @@ export default async function PanelTeam({
               name="email"
               type="email"
               required
+              className="h-11 bg-field px-3 text-sm text-ink"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs uppercase tracking-[0.12em] text-muted">
+              Mobile for alerts
+            </span>
+            <input
+              name="phone"
+              type="tel"
+              inputMode="tel"
+              placeholder="077 123 4567"
               className="h-11 bg-field px-3 text-sm text-ink"
             />
           </label>

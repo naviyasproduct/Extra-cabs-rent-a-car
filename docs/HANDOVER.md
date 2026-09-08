@@ -4,7 +4,7 @@
 without reading the whole codebase. If something here is wrong, fix it here
 rather than working around it.
 
-Last updated: **2026-09-07**
+Last updated: **2026-09-08**
 
 ---
 
@@ -38,8 +38,11 @@ current piece of work. Its full spec is in
 - **Still no Supabase.** Everything persists to one gitignored JSON file at
   `.data/panel.json` via `src/lib/panel/store.ts`. That is a deliberate
   scaffold, not a production store, and it falls back to memory on Vercel.
-- **No SMS or WhatsApp.** The access code appears on the owner's dashboard for
-  him to read out.
+- **Booking alerts by SMS are built** (Text.lk), and dormant until a token and
+  a sender ID are set. See [`sms.md`](./sms.md). Every website booking texts the
+  owner and every staff member who has a number saved in `/panel/team`.
+- **No WhatsApp, and the access OTP is still not on SMS.** The access code
+  appears on the owner's dashboard for him to read out.
 - Deployed on **Vercel**. Only the public UI is live there.
 - **SEO is done** (2026-09-06). See §2a.
 
@@ -262,7 +265,7 @@ a decision.
 | Need | Why it blocks | Lead time |
 | --- | --- | --- |
 | **Owner's real mobile, verified** | Every access OTP goes there. `site.ts` has a placeholder. Phase 4 cannot be tested without it. | Immediate - just ask |
-| **Text.lk account + API key + registered sender ID** | No OTP delivery without it. Sri Lankan gateways require sender-ID/mask registration with the telco, which is a business process, not a signup form. | **Days to weeks - start now** |
+| **Text.lk account + API key + registered sender ID** | Account exists (2026-09-08). Still needs an API token and an approved sender ID: without them no OTP delivery **and no booking alerts**, both of which are written and waiting. Text.lk quote hours to 3 business days for a sender ID, with free fast-track. | **Hours to days** |
 | **WhatsApp Business API access** | Booking notifications. Needs Meta Business verification. | **Weeks - start now** |
 | **Supabase project** | Everything from Phase 1 onward. | Minutes, once ownership is decided |
 | **Employee names + mobile numbers** | Seeding the `staff` table. | Immediate |
@@ -1151,6 +1154,92 @@ them. Adding them is mechanical and is written up in `panel.md`.
 > times until the edit helper normalised endings and restored them on write.
 
 **Verified:** `tsc` clean, build passes.
+
+### 2026-09-08 (later) - Booking alerts by SMS, via Text.lk
+
+Client opened a Text.lk account and asked for the owner and both employees to
+be texted whenever someone books a vehicle. Built. Setup steps, costs and the
+remaining gaps are in [`sms.md`](./sms.md).
+
+> **This deviates from the channel split in section 6**, which put booking
+> notifications on WhatsApp. Deliberate, and an improvement: the alert goes to
+> **our own staff**, not to a customer, so it needs no Meta template and no
+> Business verification. WhatsApp is still the right channel for messaging the
+> *customer*, and that decision is untouched. It just is not on the critical
+> path any more.
+
+**Added**
+
+- `src/lib/sms/textlk.ts` - the gateway. `POST app.text.lk/api/v3/sms/send`
+  with a Bearer token. Also owns phone normalising and segment counting.
+- `src/lib/sms/notify.ts` - who gets told, what it says, and the log.
+- `.env.example` (committed) and `.env.local` (gitignored, waiting for the
+  token). `TEXTLK_API_TOKEN`, `TEXTLK_SENDER_ID`, `SMS_ENABLED`.
+- `/panel/team` gains **Booking alerts by SMS**: a number per person, an
+  alerts on/off toggle, a **Send a test** button, and the last messages sent
+  with their status and error text.
+
+**Data model**
+
+- `StaffUser` gains `phone` and `smsAlerts`. The number is stored **as typed**
+  and normalised only at send time, so the owner reads back what he entered.
+- `PanelData` gains `messages: SmsMessage[]`, capped at 200. Each row keeps
+  Text.lk's own message id, per the plan's "store the provider message id".
+- **`hydrate()` in `store.ts` is new and matters.** The store on disk was
+  written before these fields existed, so `data.messages.push()` would have
+  thrown on the first booking. It fills missing fields on every read and never
+  overwrites. Every future field added to the store needs a line there, or a
+  developer store from last week takes down the new code.
+
+**Three decisions worth knowing**
+
+- **`after()`, not `await`.** The booking is saved first and the customer sees
+  "request sent" immediately; the texts go out after the response. A dead
+  gateway can never make a customer's booking hang or fail. Nothing in
+  `src/lib/sms/` throws at its caller, for the same reason.
+- **One HTTP call per recipient**, although Text.lk accepts a comma-separated
+  list. One call means one delivery record per person, so "the owner got it and
+  Kasun did not" is a fact in the log rather than a guess.
+- **The message is built to fit one 160 character GSM-7 segment**, with the
+  customer name and vehicle name clipped rather than left to run. One segment
+  is one unit of credit, on every booking, forever. A single Sinhala character
+  would drop the limit to 70 and double the bill, so `measure()` records the
+  encoding and segment count of everything sent.
+
+**The owner is on this list.** He is excluded from the timesheet (see the
+2026-09-07 change) but not from notifications: `bookingRecipients()` treats him
+like anyone else, because this is an alert and not presence tracking.
+
+**Proven, not assumed.** A temporary route at `/api/panel/smscheck` exercised
+the real modules and was deleted afterwards; it snapshotted the store and
+restored it in a `finally`. **All 64 checks passed**, including: six input
+forms of a Sri Lankan number normalise to `94771234567` and five bad ones are
+rejected; Sinhala text is detected as UCS-2 and 71 characters of it bills as 2
+segments; the booking message is 88 characters and one segment, and stays one
+segment when handed a 120 character name and a 120 character vehicle; blank
+numbers, opted-out people, disabled accounts and unparseable numbers all drop
+off the recipient list while the owner stays on it; with the gateway stubbed,
+the request carries the right URL, `Bearer` token, `sender_id`, `type: plain`
+and **one** normalised recipient per call; the provider uid is stored; and a
+provider error, an HTML error page, and a thrown network error each come back
+as a recorded failure rather than an exception.
+
+**Sent for real, same day.** The client pasted an API token and we ran one live
+booking through `createBookingAction` on `TextLKDemo`, Text.lk's sandbox
+sender, since our own sender ID is not approved yet. Text.lk accepted it: uid
+`6a9ff544532c1`, status `sent`, one segment, to the owner's number. The
+throwaway booking was removed from the store afterwards and the delivery record
+kept.
+
+**Still on the owner:** an approved sender ID (`TextLKDemo` cannot carry real
+traffic), and the two employees' numbers typed into `/panel/team`.
+
+**Verified:** `tsc` clean, build passes, 32 routes.
+
+> **Trap, cost a rebuild.** `next dev` writes route types into
+> `.next/dev/types/validator.ts`. Delete a route folder and `tsc --noEmit`
+> keeps failing on the stale entry until `.next/dev/types` is removed. The
+> error names a file that no longer exists, which reads like a broken import.
 
 ---
 
