@@ -44,34 +44,38 @@ export default async function PanelTeam({
     : undefined;
 
   // Lifetime totals per person, so the owner has more than one day to look at.
-  const totals = data.staff.map((staff) => {
-    const shifts = data.shifts.filter((s) => s.staffId === staff.id);
-    const summed = shifts.map((s) => summariseShift(s, data.presence));
+  // Employees only: the owner keeps no shift and no presence record, so he has
+  // no row here. See tracksTime() in lib/panel/time.ts.
+  const totals = data.staff
+    .filter((staff) => staff.role !== "owner")
+    .map((staff) => {
+      const shifts = data.shifts.filter((s) => s.staffId === staff.id);
+      const summed = shifts.map((s) => summariseShift(s, data.presence));
 
-    const claimed = summed.reduce((n, s) => n + s.claimedSeconds, 0);
-    const present = summed.reduce((n, s) => n + s.presentSeconds, 0);
-    const replies = data.audit.filter(
-      (a) => a.staffId === staff.id && a.action === "enquiry.replied",
-    ).length;
-    const bookingsHandled = data.audit.filter(
-      (a) => a.staffId === staff.id && a.entity === "booking",
-    ).length;
-    const fleetEdits = data.audit.filter(
-      (a) => a.staffId === staff.id && a.entity === "vehicle",
-    ).length;
+      const claimed = summed.reduce((n, s) => n + s.claimedSeconds, 0);
+      const present = summed.reduce((n, s) => n + s.presentSeconds, 0);
+      const replies = data.audit.filter(
+        (a) => a.staffId === staff.id && a.action === "enquiry.replied",
+      ).length;
+      const bookingsHandled = data.audit.filter(
+        (a) => a.staffId === staff.id && a.entity === "booking",
+      ).length;
+      const fleetEdits = data.audit.filter(
+        (a) => a.staffId === staff.id && a.entity === "vehicle",
+      ).length;
 
-    return {
-      staff,
-      shifts: shifts.length,
-      claimed,
-      present,
-      coverage: claimed > 0 ? Math.round((present / claimed) * 100) : 0,
-      flagged: summed.filter((s) => s.flagged).length,
-      replies,
-      bookingsHandled,
-      fleetEdits,
-    };
-  });
+      return {
+        staff,
+        shifts: shifts.length,
+        claimed,
+        present,
+        coverage: claimed > 0 ? Math.round((present / claimed) * 100) : 0,
+        flagged: summed.filter((s) => s.flagged).length,
+        replies,
+        bookingsHandled,
+        fleetEdits,
+      };
+    });
 
   return (
     <div className="flex flex-col gap-10">
@@ -79,7 +83,8 @@ export default async function PanelTeam({
         <h1 className="display-md">Team</h1>
         <p className="mt-2 max-w-[62ch] text-sm text-muted">
           Claimed is what they signed in for. Present is what the panel could
-          prove. Coverage is the second divided by the first.
+          prove. Coverage is the second divided by the first. Employees only:
+          your own account is not timed and does not appear below.
         </p>
       </div>
 

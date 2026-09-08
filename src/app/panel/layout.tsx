@@ -42,6 +42,10 @@ export default async function PanelLayout({
   children: React.ReactNode;
 }) {
   const user = await requireStaff();
+
+  // Always null for the owner, who is not on a timesheet, so neither the
+  // running clock nor the heartbeat mounts for him and his tab proves nothing.
+  // The rule lives in tracksTime() in lib/panel/time.ts, not here.
   const shift = currentShift(user.id);
   const openWindow = openWindowFor(user.id);
   const pending = pendingRequestFor(user.id);

@@ -4,6 +4,7 @@ import { requireStaff, canWrite } from "@/lib/panel/guard";
 import { staffVehicles } from "@/lib/fleet";
 import { openWindowFor, pendingRequestFor, SCOPES } from "@/lib/panel/window";
 import { formatPrice } from "@/lib/utils";
+import { MAX_VEHICLE_FEATURES } from "@/types";
 import {
   createVehicleAction,
   deleteVehicleAction,
@@ -114,37 +115,84 @@ export default async function PanelFleet({
             <Plus className="size-4 text-brand-bright" aria-hidden />
             Add a vehicle
           </h2>
-          <form action={createVehicleAction} className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <FormField label="Name" name="name" placeholder="Toyota Axio" required />
-            <FormField label="Brand" name="brand" placeholder="Toyota" />
-            <FormField label="Year" name="year" type="number" placeholder="2019" />
-            <label className="flex flex-col gap-1">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">Category</span>
-              <select name="category" className="h-11 bg-field px-3 text-sm" defaultValue="sedan">
-                {["micro", "hatchback", "sedan", "suv", "van", "luxury", "electric"].map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </label>
-            <FormField label="Seats" name="seats" type="number" placeholder="5" />
-            <FormField label="Doors" name="doors" type="number" placeholder="5" />
-            <label className="flex flex-col gap-1">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">Fuel</span>
-              <select name="fuel" className="h-11 bg-field px-3 text-sm" defaultValue="petrol">
-                {["petrol", "diesel", "hybrid", "electric"].map((f) => (
-                  <option key={f} value={f}>{f}</option>
-                ))}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">Transmission</span>
-              <select name="transmission" className="h-11 bg-field px-3 text-sm" defaultValue="automatic">
-                <option value="automatic">automatic</option>
-                <option value="manual">manual</option>
-              </select>
-            </label>
-            <FormField label="Daily rate LKR" name="daily" type="number" placeholder="9500" />
-            <div className="sm:col-span-2 lg:col-span-4">
+          <p className="mt-2 max-w-[70ch] text-sm text-muted">
+            Everything the vehicle page shows is here. Anything left blank falls
+            back to a sensible default, except the two copy boxes: leave those
+            empty and the vehicle page renders an empty section.
+          </p>
+
+          <form action={createVehicleAction} className="mt-5 flex flex-col gap-7">
+            <Group title="The vehicle">
+              <FormField label="Name" name="name" placeholder="Toyota Axio" required />
+              <FormField label="Brand" name="brand" placeholder="Toyota" />
+              <FormField label="Year" name="year" type="number" placeholder="2019" />
+              <SelectField
+                label="Category"
+                name="category"
+                defaultValue="sedan"
+                options={["micro", "hatchback", "sedan", "suv", "van", "luxury", "electric"]}
+              />
+              <FormField label="Seats" name="seats" type="number" placeholder="5" />
+              <FormField label="Doors" name="doors" type="number" placeholder="5" />
+              <FormField label="Luggage bags" name="luggage" type="number" placeholder="2" />
+              <SelectField
+                label="Fuel"
+                name="fuel"
+                defaultValue="petrol"
+                options={["petrol", "diesel", "hybrid", "electric"]}
+              />
+              <SelectField
+                label="Transmission"
+                name="transmission"
+                defaultValue="automatic"
+                options={["automatic", "manual"]}
+              />
+              <FormField label="Engine cc" name="engineCc" type="number" placeholder="1500" />
+            </Group>
+
+            <Group title="Rates in LKR">
+              <FormField label="Daily" name="daily" type="number" placeholder="9500" />
+              <FormField label="Weekly" name="weekly" type="number" placeholder="Blank: 6x daily" />
+              <FormField label="Monthly" name="monthly" type="number" placeholder="Blank: 24x daily" />
+              <FormField label="Deposit" name="deposit" type="number" placeholder="30000" />
+              <FormField
+                label="With a driver, per day"
+                name="withDriverDaily"
+                type="number"
+                placeholder="Blank: self drive only"
+              />
+            </Group>
+
+            {/* The two sections a customer actually reads. Both are prose, so
+                both are full width: a paragraph in a quarter column is
+                unusable. */}
+            <Group title="What the customer reads">
+              <div className="sm:col-span-2 lg:col-span-4">
+                <FormField
+                  label="Tagline"
+                  name="tagline"
+                  placeholder="The one line that sits under the vehicle name"
+                />
+              </div>
+
+              <TextArea
+                label="About this vehicle"
+                name="description"
+                rows={4}
+                placeholder="Our flagship. Booked most often as a decorated wedding car or for executive airport pickups. Supplied with a uniformed chauffeur as standard."
+                hint="One paragraph. This is the About this vehicle section on the vehicle page."
+              />
+
+              <TextArea
+                label="Features and equipment"
+                name="features"
+                rows={7}
+                placeholder={"Chauffeur included\nNappa leather interior\nAmbient cabin lighting\nRear window blinds\nComplimentary wedding decoration\nBottled water and tissues"}
+                hint={`One feature per line, up to ${MAX_VEHICLE_FEATURES}. A bullet or dash at the start of a line is stripped for you.`}
+              />
+            </Group>
+
+            <div>
               <button
                 type="submit"
                 className="rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-hover"
@@ -261,6 +309,84 @@ export default async function PanelFleet({
         </table>
       </section>
     </div>
+  );
+}
+
+function Group({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <fieldset>
+      <legend className="font-display text-xs font-bold uppercase tracking-[0.14em] text-muted">
+        {title}
+      </legend>
+      <div className="rule mt-2 mb-4" />
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{children}</div>
+    </fieldset>
+  );
+}
+
+function SelectField({
+  label,
+  name,
+  options,
+  defaultValue,
+}: {
+  label: string;
+  name: string;
+  options: string[];
+  defaultValue: string;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs uppercase tracking-[0.12em] text-muted">{label}</span>
+      <select
+        name={name}
+        defaultValue={defaultValue}
+        className="h-11 bg-field px-3 text-sm text-ink"
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+/** Prose fields. Always full width: a paragraph in a quarter column is unusable. */
+function TextArea({
+  label,
+  name,
+  rows,
+  placeholder,
+  hint,
+  defaultValue,
+}: {
+  label: string;
+  name: string;
+  rows: number;
+  placeholder?: string;
+  hint?: string;
+  defaultValue?: string;
+}) {
+  return (
+    <label className="flex flex-col gap-1 sm:col-span-2 lg:col-span-4">
+      <span className="text-xs uppercase tracking-[0.12em] text-muted">{label}</span>
+      <textarea
+        name={name}
+        rows={rows}
+        placeholder={placeholder}
+        defaultValue={defaultValue}
+        className="bg-field p-3 text-sm leading-relaxed text-ink placeholder:text-muted/70"
+      />
+      {hint ? <span className="text-xs text-muted">{hint}</span> : null}
+    </label>
   );
 }
 

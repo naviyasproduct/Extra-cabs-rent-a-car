@@ -9,6 +9,12 @@ import { hashPassword, newId, readData, writeData } from "@/lib/panel/store";
 import { closeShift, openShift, markAway } from "@/lib/panel/time";
 import { closeWindow, redeemCode, requestWindow, scopeLabel } from "@/lib/panel/window";
 import { vehicleBySlug } from "@/lib/fleet";
+import {
+  clamp,
+  featureLines,
+  optionalRate,
+  plainText,
+} from "@/lib/panel/vehicle-form";
 import type {
   BookingStatus,
   PanelBooking,
@@ -26,11 +32,6 @@ import type {
  * up on the public site: mark a vehicle booked here and the customer-facing
  * list drops it on the next request.
  */
-
-/** Keeps a typed-in spec inside something a real vehicle could have. */
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, Math.round(value)));
-}
 
 function refreshPublicFleet() {
   revalidatePath("/");
@@ -186,8 +187,23 @@ export async function updateVehicleAction(formData: FormData) {
     return raw === null || raw === "" || Number.isNaN(parsed) ? fallback : parsed;
   };
 
+  // A locked fieldset submits none of its controls, so an absent key means
+  // "not offered to this user", not "cleared". Those keep the current value;
+  // a present but empty key is a deliberate clear.
+  const keep = <T,>(key: string, current: T, parse: () => T): T =>
+    formData.get(key) === null ? current : parse();
+
   const next = {
     name: String(formData.get("name") ?? vehicle.car.name).trim(),
+    tagline: keep("tagline", vehicle.car.tagline, () =>
+      plainText(formData.get("tagline"), 140),
+    ),
+    description: keep("description", vehicle.car.description, () =>
+      plainText(formData.get("description"), 1200),
+    ),
+    features: keep("features", vehicle.car.features, () =>
+      featureLines(formData.get("features")),
+    ),
     seats: clamp(num("seats", vehicle.car.specs.seats), 1, 60),
     doors: clamp(num("doors", vehicle.car.specs.doors), 1, 8),
     daily: num("daily", vehicle.car.pricing.daily),
@@ -231,6 +247,10 @@ export async function updateVehicleAction(formData: FormData) {
 
   const changes: string[] = [];
   if (next.name !== before.name) changes.push(`name to ${next.name}`);
+  if (next.tagline !== before.tagline) changes.push("tagline");
+  if (next.description !== before.description) changes.push("the description");
+  if (next.features.join("|") !== before.features.join("|"))
+    changes.push(`features to ${next.features.length} item${next.features.length === 1 ? "" : "s"}`);
   if (next.seats !== before.specs.seats) changes.push(`seats to ${next.seats}`);
   if (next.doors !== before.specs.doors) changes.push(`doors to ${next.doors}`);
   if (next.daily !== before.pricing.daily)
@@ -301,13 +321,15 @@ export async function createVehicleAction(formData: FormData) {
     data.createdVehicles.push({
       slug,
       name,
-      brand: String(formData.get("brand") ?? name.split(" ")[0]).trim(),
+      brand: plainText(formData.get("brand"), 40) || name.split(" ")[0],
       year: num("year", new Date().getFullYear()),
       category: String(formData.get("category") ?? "hatchback"),
-      description: String(formData.get("description") ?? "").trim(),
+      tagline: plainText(formData.get("tagline"), 140),
+      description: plainText(formData.get("description"), 1200),
+      features: featureLines(formData.get("features")),
       seats: clamp(num("seats", 5), 1, 60),
       doors: clamp(num("doors", 5), 1, 8),
-      luggage: 2,
+      luggage: clamp(num("luggage", 2), 0, 20),
       transmission:
         String(formData.get("transmission") ?? "automatic") === "manual"
           ? "manual"
@@ -317,12 +339,14 @@ export async function createVehicleAction(formData: FormData) {
         | "diesel"
         | "hybrid"
         | "electric"),
-      engineCc: num("engineCc", 1500),
+      engineCc: clamp(num("engineCc", 1500), 0, 10000),
       daily,
+      // Left blank, the longer rates follow the daily one at the discounts the
+      // catalogue already uses, so a hurried add still produces sane pricing.
       weekly: num("weekly", daily * 6),
       monthly: num("monthly", daily * 24),
       deposit: num("deposit", 30000),
-      withDriverDaily: null,
+      withDriverDaily: optionalRate(formData.get("withDriverDaily")),
       images: [
         "/images/cars/fleet-01.jpg",
         "/images/cars/fleet-02.jpg",

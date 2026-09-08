@@ -979,6 +979,179 @@ laptops were suffering the same fault and are fixed by the same token.
 - Not seen in a real browser: there is still no browser tooling in this repo,
   so the check was structural plus arithmetic. Worth a look on the tablet.
 
+### 2026-09-07 (change) - The owner is not on a timesheet
+
+Client: the owner does not have a shift, and nothing about him should be
+recorded. Time tracking is for the two employees.
+
+**Why it was wrong.** Nothing distinguished the roles in the timesheet. Signing
+in opened a shift for whoever signed in, the panel shell mounted the heartbeat
+for anyone with an open shift, and the owner appeared on his own team report
+with a row measuring himself. The plan always framed the timesheet as the owner
+watching employees (see plan sections 3 and 7); it was simply never enforced.
+
+**Where the rule lives.** One predicate, `tracksTime(data, staffId)` in
+`src/lib/panel/time.ts`, in the **data layer** rather than in the UI. Same
+reasoning as `assertCanWrite`: a control that exists only in the screen is a
+courtesy. Every entry point is covered without any call site testing a role:
+
+| Function | For the owner |
+| --- | --- |
+| `openShift` | returns `null`, writes nothing. Return type is now `WorkShift \| null` |
+| `closeShift` | no-op |
+| `recordHeartbeat` | returns `false`, no segment created |
+| `markAway` | no-op |
+| `currentShift` | `null` |
+| `shiftsForDate` | owner rows filtered out |
+| `whoIsPresent` | owner ids filtered out |
+
+The read side filters as well as the write side, deliberately. A development
+store written before this rule already holds owner rows, and filtering on read
+keeps them out of every report without requiring `.data/panel.json` to be
+deleted.
+
+> **The old rows are still on disk.** The live dev store has one owner shift and
+> one owner presence segment from earlier testing. They are invisible in the
+> panel now, but **the Supabase migration must not carry them over**, and if the
+> store is ever inspected by hand they are still there. Deleting
+> `.data/panel.json` clears them.
+
+**UI, all downstream of the same rule**
+
+- `/panel/team`: the lifetime totals table is filtered to employees, so the
+  owner has no row at all. The intro says so.
+- `/panel`: the owner's day section carries one line explaining he is not on the
+  timesheet, so his absence from his own report reads as deliberate. It gates on
+  the new exported `isTimeTracked(staffId)`, not on `role`, so there is one
+  source of truth.
+- The panel shell: `currentShift` is `null` for him, so neither `ShiftClock` nor
+  `Heartbeat` mounts and his tab sends no beats at all.
+- `/999p7k`: the copy said "Signing in starts your shift" to everyone. It now
+  addresses employees and states plainly that the owner's account is not timed.
+  That is disclosure as much as copy, which HANDOVER section 7d asks for.
+
+**Still recorded for the owner: the audit log.** `data.audit` keeps entries for
+what the owner *does* (confirming a booking, editing a vehicle, opening a
+window), and `/panel/activity` still shows them. That is provenance for changes
+to shared records, not presence tracking, and the access-request trail is
+incomplete without it. Say the word if the owner wants his actions out of the
+log too, but that is a different change with consequences for the OTP audit
+trail.
+
+**Proven, not assumed.** A temporary route at `/api/panel/ownercheck` exercised
+the real modules and was deleted afterwards. It snapshotted the store on entry
+and restored it in a `finally`, so the dev data is unchanged. All 17 checks
+passed: the owner is not tracked and an employee is; `openShift` returns null
+and writes no row; the heartbeat is refused and adds no segment; `markAway`
+writes nothing; `currentShift` is null; `closeShift` leaves an existing owner
+row untouched rather than closing it; an employee's shift, heartbeat, current
+shift and presence all still work; and an owner shift and segment injected
+straight into the store are hidden from both `shiftsForDate` and `whoIsPresent`
+while the employee alongside them stays visible.
+
+One assertion failed on the first run, and the code was right: it asserted the
+store held zero owner presence segments, which was false because of the rows
+described above. Rewritten as a before-and-after delta on the same call.
+
+**Verified:** `tsc` clean, build passes.
+
+### 2026-09-08 - The add-vehicle form was missing the copy the customer reads
+
+Client, as the owner: adding a vehicle gives no way to write the "About this
+vehicle" paragraph or the "Features and equipment" list, and the add form must
+carry everything a vehicle needs.
+
+**How bad it actually was.** Worse than a missing textarea:
+
+- The add form had **no description field at all**, yet
+  `createVehicleAction` read `formData.get("description")`. So every
+  panel-added vehicle was created with `description: ""`.
+- `features` was **hardcoded to `[]`** in `createdToCar()` in `src/lib/fleet.ts`.
+  There was no field, no store column and no way to set one.
+- The result on the public vehicle page: an "About this vehicle" heading over
+  an empty paragraph, and a "Features and equipment" heading over an empty
+  list. Two empty sections on every vehicle the owner added.
+- Nothing was editable afterwards either. `VehicleOverride` had no copy fields,
+  so even the twelve catalogue vehicles had no route to fix their own wording.
+
+Also missing from the add form, all of which the vehicle page renders:
+tagline, luggage (**hardcoded to 2**), engine cc, the weekly, monthly and
+deposit rates, and the with-driver rate (**hardcoded to `null`**, which is what
+makes a vehicle read as self drive only). The client's own example is a
+chauffeur-driven wedding car, so that last one mattered.
+
+**Data model**
+
+- `CreatedVehicle` gains `tagline` and `features`.
+- `VehicleOverride` gains `tagline?`, `description?` and `features?`, so the
+  copy is editable on catalogue vehicles too, not just panel-added ones.
+- `applyOverride()` and `createdToCar()` in `src/lib/fleet.ts` carry them
+  through. `MAX_VEHICLE_FEATURES = 12` sits in `src/types/car.ts` beside the
+  image cap, for the same reason: no data in that file, so client components
+  can import it freely.
+
+> **`??`, not a truthiness test.** In `applyOverride()` an empty string and an
+> empty array are **real values**: they mean the owner cleared the box. A
+> `||` there would silently resurrect the catalogue copy the moment someone
+> emptied a field, and the bug would look like the save had failed.
+
+**Both forms**
+
+- `/panel/fleet` add form: rebuilt into three groups under hairline rules,
+  "The vehicle", "Rates in LKR" and "What the customer reads". It now sets
+  every field the vehicle page shows. Blank rates still fall back to the
+  catalogue's own multiples (6x daily weekly, 24x daily monthly) so a hurried
+  add still produces sane pricing.
+- `/panel/fleet/[slug]` edit form: gains tagline, description and features, so
+  copy can be corrected after the fact. **A description you cannot fix is a
+  bug**, and the catalogue vehicles never had an edit route for theirs at all.
+- The feature placeholder is the client's own wedding-car list, so the control
+  explains itself.
+
+**Parsers moved out of `actions.ts`**
+
+`clamp`, `plainText`, `featureLines` and `optionalRate` now live in
+`src/lib/panel/vehicle-form.ts`. Not tidying: `actions.ts` is `"use server"`,
+where **every export must be an async server action**, so a helper there can be
+neither exported nor tested. Pure functions in a plain module can be both.
+
+- `featureLines()` splits on newlines, normalises CRLF, strips a leading
+  bullet, dash, asterisk or dot, drops blank lines, caps each line at 90
+  characters and the list at `MAX_VEHICLE_FEATURES`. The owner pastes a
+  bulleted list out of a document and it lands clean.
+- `optionalRate()` treats blank **and zero** as `null`, so an empty with-driver
+  box means self drive only rather than a free chauffeur.
+
+**Proven, not assumed.** A temporary route at `/api/panel/vehiclecheck`
+exercised the real modules and was deleted afterwards; it snapshotted the store
+and restored it in a `finally`. All 22 checks passed, including: a pasted list
+mixing dashes, bullets, asterisks, blank lines and CRLF comes out as six clean
+features; the list caps at 12; blank and zero with-driver rates give `null`
+while 14500 survives; a created vehicle carries its description, features,
+tagline, with-driver rate and a luggage value of 3 (not the old hardcoded 2)
+all the way through `publicCarBySlug`; an override rewrites a **catalogue**
+vehicle's description, features and tagline while `src/lib/data/cars.ts` stays
+untouched; and an emptied feature list stays empty instead of falling back.
+
+Verified over HTTP as the owner, on the running dev server: the add form
+renders all nine previously-missing field names plus both textareas and the
+three group headings, and the edit form renders the tagline field and both
+textareas with the Prius's existing catalogue description prefilled.
+
+**Still frozen after creation:** brand, year, category, luggage, transmission,
+fuel, engine size and the with-driver rate. `VehicleOverride` has no fields for
+them. Adding them is mechanical and is written up in `panel.md`.
+
+> **Two shell traps, both cost time.** Passing escape-heavy code through a
+> quoted bash heredoc mangled it: `\r\n` and `\s` in the source arrived as a
+> real newline and a bare `s`, which `tsc` caught as an unterminated regular
+> expression. Write such files with the Write tool and `String.raw`, per the
+> note in the 2026-09-07 hero entry. Separately, `src/lib/fleet.ts` is **CRLF**
+> while the rest of `src/` is LF, so multi-line anchors silently matched zero
+> times until the edit helper normalised endings and restored them on write.
+
+**Verified:** `tsc` clean, build passes.
+
 ---
 
 ## 9. Working agreements

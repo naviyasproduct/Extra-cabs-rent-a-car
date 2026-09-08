@@ -13,6 +13,7 @@ import {
   colomboDate,
   colomboDateTime,
   formatDuration,
+  isTimeTracked,
   shiftsForDate,
   whoIsPresent,
 } from "@/lib/panel/time";
@@ -176,6 +177,15 @@ export default async function PanelHome() {
         <div className="mt-4 bg-tile p-4 sm:p-6">
           <DayTimeline summaries={summaries} nameFor={nameFor} />
         </div>
+
+        {/* The owner is not on the timesheet, so say so rather than leaving
+            him to wonder why he is missing from his own day. */}
+        {!isTimeTracked(user.id) ? (
+          <p className="mt-3 max-w-[62ch] text-xs leading-relaxed text-muted">
+            You are not on the timesheet. No shift and no presence is recorded
+            for your account, which is why you do not appear above.
+          </p>
+        ) : null}
       </section>
 
       {/* Employee: how to get write access */}

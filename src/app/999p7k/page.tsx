@@ -48,6 +48,10 @@ async function signIn(formData: FormData) {
 
   // Signing in IS the start of the shift. The plan wants one deliberate act,
   // not a sign-in followed by a separate clock-in nobody remembers to press.
+  //
+  // For the owner this does nothing at all: he is not on a timesheet, and
+  // openShift refuses him rather than this call site testing the role. One
+  // rule, in one place, covering every entry point.
   openShift(result.staffId);
 
   redirect("/panel");
@@ -76,8 +80,9 @@ export default async function StaffSignInPage({
 
         <h1 className="display-md mt-6">Extra Cabs control</h1>
         <p className="mt-3 text-sm leading-relaxed text-muted">
-          Signing in starts your shift. Sign out when you leave so your hours
-          are recorded correctly.
+          Employees: signing in starts your shift, so sign out when you leave
+          and your hours are recorded correctly. The owner's account is not
+          timed and nothing about it is recorded.
         </p>
 
         {error ? (

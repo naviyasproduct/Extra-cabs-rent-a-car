@@ -7,6 +7,8 @@ import type { PanelData, PresenceSegment, WorkShift } from "./types";
  * Two records per day: the shift is what the employee claims, the presence
  * segments are what the system can prove. Coverage is proven over claimed, and
  * the gap between the two is the whole point.
+ *
+ * Employees only. The owner is not tracked at all: see `tracksTime` below.
  */
 
 export const HEARTBEAT_SECONDS = 20;
@@ -54,6 +56,37 @@ export function formatDuration(seconds: number): string {
   const m = Math.round((seconds % 3600) / 60);
   if (h === 0) return `${m}m`;
   return m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Who is on a timesheet                                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * The owner is not on a timesheet. Client decision, 2026-09-07.
+ *
+ * He does not employ himself, so there is no shift for him to claim, and the
+ * report is FOR him, so proving his presence would be measuring the reader.
+ * Nothing about his hours or his whereabouts is written down.
+ *
+ * Enforced here, in the data layer, rather than by hiding the buttons, for the
+ * same reason as every other rule in this platform: a control that exists only
+ * in the UI is a courtesy. `openShift`, `closeShift`, `recordHeartbeat` and
+ * `markAway` all refuse an owner, so no route, action or later caller can
+ * start recording him by accident.
+ *
+ * The read side filters as well, so owner rows already sitting in a
+ * development store from before this rule stay out of the timesheet rather
+ * than needing the store deleted.
+ */
+function tracksTime(data: PanelData, staffId: string): boolean {
+  const staff = data.staff.find((s) => s.id === staffId);
+  return staff !== undefined && staff.role !== "owner";
+}
+
+/** True when this person's hours and presence are recorded at all. */
+export function isTimeTracked(staffId: string): boolean {
+  return tracksTime(readData(), staffId);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -106,9 +139,13 @@ export function sweep(): void {
 /* Sign in and out                                                             */
 /* -------------------------------------------------------------------------- */
 
-export function openShift(staffId: string): WorkShift {
+export function openShift(staffId: string): WorkShift | null {
   return writeData((data) => {
     sweepStalePresence(data);
+
+    // No shift for the owner. Callers may call this blindly; the refusal is
+    // here so it cannot be forgotten at a call site.
+    if (!tracksTime(data, staffId)) return null;
 
     const existing = data.shifts.find(
       (s) => s.staffId === staffId && s.signedOutAt === null && s.endReason === null,
@@ -147,6 +184,8 @@ export function openShift(staffId: string): WorkShift {
 
 export function closeShift(staffId: string, reason: WorkShift["endReason"]): void {
   writeData((data) => {
+    if (!tracksTime(data, staffId)) return;
+
     const shift = data.shifts.find(
       (s) => s.staffId === staffId && s.signedOutAt === null && s.endReason === null,
     );
@@ -207,6 +246,10 @@ export function recordHeartbeat(staffId: string): boolean {
   return writeData((data) => {
     sweepStalePresence(data);
 
+    // The owner's presence is never recorded, so his beats are dropped rather
+    // than stored and filtered out later.
+    if (!tracksTime(data, staffId)) return false;
+
     const shift = data.shifts.find(
       (s) => s.staffId === staffId && s.signedOutAt === null && s.endReason === null,
     );
@@ -221,6 +264,8 @@ export function recordHeartbeat(staffId: string): boolean {
 /** The tab went away. Best effort only; the sweeper is the source of truth. */
 export function markAway(staffId: string, how: PresenceSegment["endedBy"]): void {
   writeData((data) => {
+    if (!tracksTime(data, staffId)) return;
+
     for (const segment of data.presence) {
       if (segment.staffId === staffId && segment.toAt === null) {
         segment.toAt = segment.lastHeartbeatAt;
@@ -306,14 +351,17 @@ export function summariseShift(
 export function shiftsForDate(date: string): ShiftSummary[] {
   const data = readData();
   return data.shifts
-    .filter((s) => s.workDate === date)
+    .filter((s) => s.workDate === date && tracksTime(data, s.staffId))
     .map((s) => summariseShift(s, data.presence))
     .sort((a, b) => a.shift.signedInAt.localeCompare(b.shift.signedInAt));
 }
 
 export function currentShift(staffId: string): WorkShift | null {
+  const data = readData();
+  if (!tracksTime(data, staffId)) return null;
+
   return (
-    readData().shifts.find(
+    data.shifts.find(
       (s) => s.staffId === staffId && s.signedOutAt === null && s.endReason === null,
     ) ?? null
   );
@@ -325,7 +373,10 @@ export function whoIsPresent(): string[] {
   const cutoff = Date.now() - PRESENCE_TIMEOUT_SECONDS * 1000;
   return data.presence
     .filter(
-      (p) => p.toAt === null && new Date(p.lastHeartbeatAt).getTime() >= cutoff,
+      (p) =>
+        p.toAt === null &&
+        new Date(p.lastHeartbeatAt).getTime() >= cutoff &&
+        tracksTime(data, p.staffId),
     )
     .map((p) => p.staffId);
 }

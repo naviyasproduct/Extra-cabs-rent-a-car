@@ -10,6 +10,15 @@
  */
 export const MAX_VEHICLE_IMAGES = 5;
 
+/**
+ * How many "Features and equipment" bullets a vehicle may list.
+ *
+ * Twelve fills the two-column list on the vehicle page without turning it into
+ * a specification dump nobody reads. Same reasoning and same home as the image
+ * cap: no data in this file, so client components can import it freely.
+ */
+export const MAX_VEHICLE_FEATURES = 12;
+
 export type CarCategory =
   | "micro"
   | "hatchback"

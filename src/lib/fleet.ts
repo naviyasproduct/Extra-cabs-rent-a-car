@@ -1,6 +1,6 @@
 import { connection } from "next/server";
 import type { Car, CarCategory } from "@/types";
-import { MAX_VEHICLE_IMAGES } from "@/types";
+import { MAX_VEHICLE_FEATURES, MAX_VEHICLE_IMAGES } from "@/types";
 import { getCars as catalogueCars } from "@/lib/data/cars";
 import { readData } from "@/lib/panel/store";
 import type { CreatedVehicle, VehicleOverride } from "@/lib/panel/types";
@@ -33,6 +33,12 @@ function applyOverride(car: Car, override: VehicleOverride | undefined): Car {
   return {
     ...car,
     name: override.name ?? car.name,
+    // Customer-facing copy. An empty string or an empty list is a real value
+    // here: it means the owner cleared the box. So these use ?? rather than a
+    // truthiness test, and only an absent override falls back to the catalogue.
+    tagline: override.tagline ?? car.tagline,
+    description: override.description ?? car.description,
+    features: override.features ?? car.features,
     available: override.available ?? car.available,
     featured: override.featured ?? car.featured,
     specs: {
@@ -61,7 +67,7 @@ function createdToCar(vehicle: CreatedVehicle): Car {
     brand: vehicle.brand,
     year: vehicle.year,
     category: vehicle.category as CarCategory,
-    tagline: "",
+    tagline: vehicle.tagline,
     description: vehicle.description,
     specs: {
       seats: vehicle.seats,
@@ -79,7 +85,7 @@ function createdToCar(vehicle: CreatedVehicle): Car {
       deposit: vehicle.deposit,
       withDriverDaily: vehicle.withDriverDaily,
     },
-    features: [],
+    features: vehicle.features.slice(0, MAX_VEHICLE_FEATURES),
     images: vehicle.images.slice(0, MAX_VEHICLE_IMAGES),
     rating: 0,
     reviewCount: 0,

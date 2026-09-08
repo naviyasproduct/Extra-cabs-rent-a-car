@@ -50,6 +50,28 @@ everywhere, restorable from Show removed.
 layered on top, which is why the catalogue file stays a clean seam for the
 database later.
 
+### 1a. What a vehicle carries
+
+The public vehicle page renders an "About this vehicle" paragraph and a
+"Features and equipment" list. Both are now set in the panel, on create and on
+edit, for panel-added and catalogue vehicles alike.
+
+Features are typed one per line in a textarea, which is the right control for a
+list of unknown length. `featureLines()` in `src/lib/panel/vehicle-form.ts`
+strips leading bullets, dashes and asterisks, drops blank lines, normalises
+CRLF and caps the list at `MAX_VEHICLE_FEATURES` (12, in `src/types/car.ts`
+beside the image cap). Pasting a bulleted list out of a document therefore does
+the right thing instead of putting "- " in front of every item on the website.
+
+The form parsers live in `vehicle-form.ts` rather than `actions.ts` because
+that file is `"use server"`, where **every export must be an async server
+action**. A plain exported helper there is a build error, and a non-exported
+one cannot be reached by a test.
+
+Clearing a box clears it on the site. `applyOverride()` uses `??`, not a
+truthiness test, so an empty string and an empty array are real values rather
+than a signal to fall back to the catalogue.
+
 ### 2. The write window
 
 An employee can handle bookings and enquiries any time. Adding, editing or
@@ -72,6 +94,20 @@ logged, code destroyed on use, cannot be reused, a fleet window does not unlock
 pricing, a window on one vehicle does not unlock another, and closing relocks.
 
 ### 3. Claimed against proven
+
+**Employees only. The owner is not on a timesheet** (client decision,
+2026-09-07). He does not employ himself, so he has no shift to claim, and the
+report is for him, so proving his presence would be measuring the reader. He
+gets no shift row, no presence segment and no heartbeat, and he does not appear
+on any timeline or in the team totals.
+
+That is enforced by `tracksTime()` in `src/lib/panel/time.ts`, in the data layer
+rather than by hiding buttons, so no route, action or later caller can start
+recording him by accident. `openShift` returns `null`, `recordHeartbeat`
+returns `false`, and `closeShift` and `markAway` do nothing. The read side
+filters too, so owner rows written before this rule stay out of the reports
+without needing the store deleted. **They are still on disk**, so the Supabase
+migration must not carry them over.
 
 Signing in starts the shift. A heartbeat every 20 seconds records presence; the
 server writes its own clock, never the browser's, so stopping the beats can
@@ -99,6 +135,7 @@ src/lib/panel/auth.ts     HMAC session cookie, sign-in
 src/lib/panel/guard.ts    requireStaff / requireOwner / assertCanWrite
 src/lib/panel/time.ts     shifts, presence, sweeper, coverage
 src/lib/panel/window.ts   OTP lifecycle
+src/lib/panel/vehicle-form.ts  pure parsers for the vehicle forms
 src/lib/fleet.ts          catalogue + overrides, public vs staff views
 src/proxy.ts              cookie check on /panel (NOT middleware.ts)
 src/app/999p7k/           sign in
@@ -158,11 +195,15 @@ are still static.
 - **No SMS and no WhatsApp.** The OTP is shown on the owner's screen.
 - **Sessions are not revocable** beyond the 12 hour expiry, because there is no
   session table yet.
-- **Only some specs are editable.** Name, seats, doors, the four prices and the
-  home-page flag. Luggage, transmission, fuel and engine size are set when a
-  vehicle is created but cannot be changed afterwards, and luggage is still
-  fixed at 2 on create. They show on the public vehicle page, so they are the
-  same gap doors had.
+- **Add sets everything; edit sets most of it.** The add form now covers every
+  field the vehicle page renders: the vehicle, all five rates, and the copy
+  (tagline, "About this vehicle", "Features and equipment"). The edit form
+  covers name, seats, doors, the four rates, the home-page flag and all three
+  copy fields. **Still not editable after creation:** brand, year, category,
+  luggage, transmission, fuel, engine size and the with-driver rate. Those are
+  set on create and then frozen, because `VehicleOverride` has no fields for
+  them yet. Adding them is mechanical: a field on the override, a line in
+  `applyOverride()`, a control on the edit form.
 - **Photo upload is not built.** Vehicles added in the panel reuse the three
   stock photos. `fleet.photos` exists as a scope with nothing behind it.
 - **Break-glass access is not built.** If the owner is unreachable the employee

@@ -182,6 +182,12 @@ export interface Enquiry {
  */
 export interface VehicleOverride {
   name?: string;
+  /** One-line hook under the vehicle name. */
+  tagline?: string;
+  /** The "About this vehicle" paragraph. */
+  description?: string;
+  /** The "Features and equipment" list, in display order. */
+  features?: string[];
   available?: boolean;
   featured?: boolean;
   daily?: number;
@@ -202,7 +208,12 @@ export interface CreatedVehicle {
   brand: string;
   year: number;
   category: string;
+  /** One-line hook under the vehicle name. */
+  tagline: string;
+  /** The "About this vehicle" paragraph. */
   description: string;
+  /** The "Features and equipment" list, in display order. */
+  features: string[];
   seats: number;
   doors: number;
   luggage: number;

@@ -5,6 +5,7 @@ import { requireStaff, canWrite } from "@/lib/panel/guard";
 import { vehicleBySlug } from "@/lib/fleet";
 import { readData } from "@/lib/panel/store";
 import { colomboDateTime } from "@/lib/panel/time";
+import { MAX_VEHICLE_FEATURES } from "@/types";
 import { updateVehicleAction } from "../../actions";
 
 export const dynamic = "force-dynamic";
@@ -75,24 +76,56 @@ export default async function PanelVehicle({
       <form action={updateVehicleAction} className="flex flex-col gap-6">
         <input type="hidden" name="slug" value={car.slug} />
 
-        <fieldset disabled={!editable} className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Field label="Name" name="name" defaultValue={car.name} />
-          <Field label="Seats" name="seats" type="number" defaultValue={car.specs.seats} />
-          <Field label="Doors" name="doors" type="number" defaultValue={car.specs.doors} />
-          <Field label="Daily rate LKR" name="daily" type="number" defaultValue={car.pricing.daily} />
-          <Field label="Weekly rate LKR" name="weekly" type="number" defaultValue={car.pricing.weekly} />
-          <Field label="Monthly rate LKR" name="monthly" type="number" defaultValue={car.pricing.monthly} />
-          <Field label="Deposit LKR" name="deposit" type="number" defaultValue={car.pricing.deposit} />
+        <fieldset disabled={!editable} className="flex flex-col gap-7">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <Field label="Name" name="name" defaultValue={car.name} />
+            <Field label="Seats" name="seats" type="number" defaultValue={car.specs.seats} />
+            <Field label="Doors" name="doors" type="number" defaultValue={car.specs.doors} />
+            <Field label="Daily rate LKR" name="daily" type="number" defaultValue={car.pricing.daily} />
+            <Field label="Weekly rate LKR" name="weekly" type="number" defaultValue={car.pricing.weekly} />
+            <Field label="Monthly rate LKR" name="monthly" type="number" defaultValue={car.pricing.monthly} />
+            <Field label="Deposit LKR" name="deposit" type="number" defaultValue={car.pricing.deposit} />
 
-          <label className="flex items-center gap-2.5 self-end pb-2 text-sm">
-            <input
-              type="checkbox"
-              name="featured"
-              defaultChecked={car.featured}
-              className="size-4 accent-brand"
-            />
-            <span className="text-ink-soft">Show on the home page</span>
-          </label>
+            <label className="flex items-center gap-2.5 self-end pb-2 text-sm">
+              <input
+                type="checkbox"
+                name="featured"
+                defaultChecked={car.featured}
+                className="size-4 accent-brand"
+              />
+              <span className="text-ink-soft">Show on the home page</span>
+            </label>
+          </div>
+
+          {/* The copy the customer reads. Editable here as well as on create,
+              because a description you cannot correct is a bug, and the
+              catalogue vehicles never had an edit route for theirs at all. */}
+          <div>
+            <legend className="font-display text-xs font-bold uppercase tracking-[0.14em] text-muted">
+              What the customer reads
+            </legend>
+            <div className="rule mt-2 mb-4" />
+
+            <div className="flex flex-col gap-4">
+              <Field label="Tagline" name="tagline" defaultValue={car.tagline} />
+
+              <TextArea
+                label="About this vehicle"
+                name="description"
+                rows={4}
+                defaultValue={car.description}
+                hint="One paragraph. This is the About this vehicle section on the vehicle page."
+              />
+
+              <TextArea
+                label="Features and equipment"
+                name="features"
+                rows={7}
+                defaultValue={car.features.join("\n")}
+                hint={`One feature per line, up to ${MAX_VEHICLE_FEATURES}. A bullet or dash at the start of a line is stripped for you.`}
+              />
+            </div>
+          </div>
         </fieldset>
 
         {editable ? (
@@ -140,6 +173,34 @@ export default async function PanelVehicle({
         </ul>
       </section>
     </div>
+  );
+}
+
+/** Prose fields. Full width: a paragraph in a third of a row is unusable. */
+function TextArea({
+  label,
+  name,
+  rows,
+  defaultValue,
+  hint,
+}: {
+  label: string;
+  name: string;
+  rows: number;
+  defaultValue?: string;
+  hint?: string;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs uppercase tracking-[0.12em] text-muted">{label}</span>
+      <textarea
+        name={name}
+        rows={rows}
+        defaultValue={defaultValue}
+        className="bg-field p-3 text-sm leading-relaxed text-ink disabled:opacity-50"
+      />
+      {hint ? <span className="text-xs text-muted">{hint}</span> : null}
+    </label>
   );
 }
 
