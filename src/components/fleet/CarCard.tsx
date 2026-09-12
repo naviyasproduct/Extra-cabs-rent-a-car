@@ -1,18 +1,22 @@
 import Link from "next/link";
-import { Armchair, Banknote, Fuel } from "lucide-react";
+import { Armchair, Fuel, Gauge } from "lucide-react";
 import { CarImage } from "@/components/common/CarImage";
 import type { Car } from "@/types";
-import { cn, formatNumber } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 
 const fuelLabels: Record<Car["specs"]["fuel"], string> = {
   petrol: "Petrol",
   diesel: "Diesel",
-  hybrid: "Hybrid",
   electric: "Electric",
 };
 
 /**
- * Fleet tile. Name, three numbers, done.
+ * Fleet tile. Name, three facts, done.
+ *
+ * The three are seats, fuel and gearbox. The daily rate used to sit in the
+ * middle cell and was taken out on purpose: the rate belongs on the vehicle
+ * page beside what it includes, and a bare number on a tile invites the
+ * customer to compare on price alone.
  *
  * The tile paints a background because a grid of four vehicles with no
  * surfaces reads as one strip of photos and you cannot tell which name belongs
@@ -26,7 +30,25 @@ const fuelLabels: Record<Car["specs"]["fuel"], string> = {
  * title link. There is no separate "view details" control: a tile is obviously
  * clickable, and one link per card means the vehicle name is its anchor text.
  */
-export function CarCard({ car, className }: { car: Car; className?: string }) {
+export function CarCard({
+  car,
+  className,
+  /**
+   * Set on the FIRST tile of a grid. A grid of vehicle photos is the largest
+   * thing on /fleet and, below the hero, on the home page, so the first tile
+   * is what the browser reports as the LCP element, and a lazy image there is
+   * a measured delay. Eager rather than next/image's `preload`: which tile
+   * is largest depends on the viewport and, on /fleet, on the filters, and
+   * the docs say not to preload when the LCP element moves like that. An
+   * eager <img> still gets a preload link hoisted for it, which is the right
+   * amount of urgency without pinning the choice.
+   */
+  eager = false,
+}: {
+  car: Car;
+  className?: string;
+  eager?: boolean;
+}) {
   const stats = [
     {
       key: "seats",
@@ -36,18 +58,18 @@ export function CarCard({ car, className }: { car: Car; className?: string }) {
       inline: `${car.specs.seats} ${car.specs.seats === 1 ? "seat" : "seats"}`,
     },
     {
-      key: "rate",
-      icon: Banknote,
-      value: formatNumber(car.pricing.daily),
-      label: "LKR / day",
-      inline: `${formatNumber(car.pricing.daily)} / day`,
-    },
-    {
       key: "fuel",
       icon: Fuel,
       value: fuelLabels[car.specs.fuel],
       label: "Fuel",
       inline: fuelLabels[car.specs.fuel],
+    },
+    {
+      key: "transmission",
+      icon: Gauge,
+      value: car.specs.transmission === "automatic" ? "Auto" : "Manual",
+      label: "Gearbox",
+      inline: car.specs.transmission === "automatic" ? "Automatic" : "Manual",
     },
   ];
 
@@ -65,6 +87,7 @@ export function CarCard({ car, className }: { car: Car; className?: string }) {
           src={car.images[0]}
           alt={`${car.name}, ${car.year} model`}
           label={car.name}
+          eager={eager}
           className="transition-transform duration-500 group-hover:scale-[1.03]"
         />
       </div>

@@ -36,10 +36,11 @@ export async function FeaturedFleet() {
         />
 
         <Grid className="mt-8">
-          {cars.map((car) => (
+          {cars.map((car, index) => (
             <CarCard
               key={car.id}
               car={car}
+              eager={index === 0}
               className="col-span-4 md:col-span-4 lg:col-span-3"
             />
           ))}

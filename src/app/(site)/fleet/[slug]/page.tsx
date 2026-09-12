@@ -8,6 +8,7 @@ import {
   DoorOpen,
   Fuel,
   Gauge,
+  Leaf,
   Snowflake,
   Users,
 } from "lucide-react";
@@ -36,7 +37,9 @@ export async function generateMetadata({
   const car = await publicCarBySlug(slug);
   if (!car) return { title: "Vehicle not found" };
 
-  const description = `Hire the ${car.name} (${car.year}) in Colombo from ${formatPrice(car.pricing.daily)} a day. ${car.specs.seats} seats, ${car.specs.transmission}, ${car.specs.fuel}. Unlimited kilometres.`;
+  const drivetrain = car.specs.hybrid ? `${car.specs.fuel} hybrid` : car.specs.fuel;
+
+  const description = `Hire the ${car.name} (${car.year}) in Colombo from ${formatPrice(car.pricing.daily)} a day. ${car.specs.seats} seats, ${car.specs.transmission}, ${drivetrain}. Unlimited kilometres.`;
 
   return {
     title: `${car.name} hire`,
@@ -96,8 +99,13 @@ export default async function CarDetailPage({
     {
       icon: Fuel,
       label: "Fuel",
+      // The real fuel, which is what the customer needs at the pump. Hybrid is
+      // the cell after this one, because a hybrid still takes petrol.
       value: car.specs.fuel.charAt(0).toUpperCase() + car.specs.fuel.slice(1),
     },
+    ...(car.specs.hybrid
+      ? [{ icon: Leaf, label: "Drivetrain", value: "Hybrid" }]
+      : []),
     {
       icon: Snowflake,
       label: "Climate",

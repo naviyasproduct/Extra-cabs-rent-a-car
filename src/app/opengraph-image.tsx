@@ -7,7 +7,8 @@ import { site } from "@/lib/data/site";
  *
  * ImageResponse renders through Satori, which has no access to the stylesheet,
  * so the token values from globals.css are written out literally here. They are
- * the same colours, not new ones: paper #000000, brand #e01b22, ink #e9edf5.
+ * the same colours, not new ones: paper #000000, brand #ff5151, ink #e9edf5.
+ * They have to be changed whenever the brand tokens in globals.css are.
  */
 export const alt = `${site.name}, ${site.tagline}`;
 export const size = { width: 1200, height: 630 };
@@ -32,7 +33,7 @@ export default async function OpengraphImage() {
             style={{
               width: 56,
               height: 56,
-              backgroundColor: "#e01b22",
+              backgroundColor: "#ff5151",
               borderRadius: 14,
               display: "flex",
               alignItems: "center",
@@ -70,7 +71,7 @@ export default async function OpengraphImage() {
           </div>
           <div
             style={{
-              color: "#ff5b61",
+              color: "#ff7a7a",
               fontSize: 40,
               fontWeight: 600,
               marginTop: 20,
@@ -81,7 +82,7 @@ export default async function OpengraphImage() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
-          <div style={{ width: 120, height: 6, backgroundColor: "#e01b22" }} />
+          <div style={{ width: 120, height: 6, backgroundColor: "#ff5151" }} />
           <div style={{ color: "#adb7c9", fontSize: 26 }}>
             Self drive, cabs with a driver, airport transfers, wedding cars
           </div>

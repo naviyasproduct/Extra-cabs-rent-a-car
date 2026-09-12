@@ -1,9 +1,10 @@
 import { ImageResponse } from "next/og";
 
 /**
- * Browser tab icon. Signal red from the logo with a white E, matching the mark
- * in components/layout/Logo.tsx. Colour is written literally because Satori
- * cannot read the stylesheet, but it is the --color-brand token value.
+ * Browser tab icon. Brand red with a white E, matching the mark in
+ * components/layout/Logo.tsx. Colour is written literally because Satori
+ * cannot read the stylesheet, but it is the --color-brand token value and has
+ * to be changed with it.
  */
 export const size = { width: 32, height: 32 };
 export const contentType = "image/png";
@@ -18,7 +19,7 @@ export default function Icon() {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          backgroundColor: "#e01b22",
+          backgroundColor: "#ff5151",
           color: "#ffffff",
           fontSize: 22,
           fontWeight: 700,

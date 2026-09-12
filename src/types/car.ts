@@ -30,7 +30,15 @@ export type CarCategory =
 
 export type Transmission = "automatic" | "manual";
 
-export type FuelType = "petrol" | "diesel" | "hybrid" | "electric";
+/**
+ * What the vehicle actually burns.
+ *
+ * Hybrid is deliberately NOT in here. A hybrid still runs on petrol, so
+ * listing it as a fuel type made the vehicle page answer "what fuel does
+ * this take" with "Hybrid", which tells a customer nothing at the pump.
+ * The drivetrain is a separate fact and lives in `CarSpecs.hybrid`.
+ */
+export type FuelType = "petrol" | "diesel" | "electric";
 
 export interface CarPricing {
   /** All prices in LKR. */
@@ -49,6 +57,8 @@ export interface CarSpecs {
   luggage: number;
   transmission: Transmission;
   fuel: FuelType;
+  /** Petrol or diesel engine paired with an electric motor. */
+  hybrid: boolean;
   engineCc: number;
   airConditioned: boolean;
 }
@@ -83,6 +93,8 @@ export interface CarFilters {
   category?: CarCategory | "all";
   transmission?: Transmission | "all";
   fuel?: FuelType | "all";
+  /** True narrows to hybrids. Undefined or false does not filter. */
+  hybrid?: boolean;
   seats?: number | "all";
   maxDaily?: number;
   search?: string;

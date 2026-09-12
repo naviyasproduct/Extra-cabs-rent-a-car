@@ -1,4 +1,5 @@
 import { MAX_VEHICLE_FEATURES } from "@/types";
+import type { PanelFuel } from "@/lib/panel/types";
 
 /**
  * Turning what someone typed into a vehicle form into values the fleet can
@@ -10,6 +11,26 @@ import { MAX_VEHICLE_FEATURES } from "@/types";
  * plain exported helper there is a build error, and a non-exported one cannot
  * be reached by a test.
  */
+
+const FUELS: PanelFuel[] = ["petrol", "diesel", "electric"];
+
+/**
+ * The fuel a select submitted, pinned to one we recognise.
+ *
+ * Anything unknown becomes petrol rather than reaching the store. "hybrid" is
+ * the case that matters: it was a fuel option until the drivetrain was split
+ * out, so an old bookmarked form or a stale client can still post it, and it
+ * must not land back in the data as a fuel.
+ */
+export function fuelChoice(raw: FormDataEntryValue | null): PanelFuel {
+  const value = String(raw ?? "").trim().toLowerCase();
+  return (FUELS as string[]).includes(value) ? (value as PanelFuel) : "petrol";
+}
+
+/** An unchecked checkbox submits nothing at all, which is the false case. */
+export function checkbox(raw: FormDataEntryValue | null): boolean {
+  return raw === "on" || raw === "true";
+}
 
 /** Keeps a typed-in spec inside something a real vehicle could have. */
 export function clamp(value: number, min: number, max: number): number {

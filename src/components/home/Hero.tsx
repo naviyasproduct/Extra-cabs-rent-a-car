@@ -1,4 +1,4 @@
-import Image from "next/image";
+import { getImageProps } from "next/image";
 import { LinkButton } from "@/components/ui/Button";
 import { Shell } from "@/components/ui/Layout";
 
@@ -28,6 +28,59 @@ import { Shell } from "@/components/ui/Layout";
  * by the same factor and the overlap still lands in the letterforms.
  */
 export function Hero() {
+  /*
+    Art direction: two different photographs, one download.
+
+    The client supplied a wide eight-vehicle lineup for desktop and a three
+    vehicle version for phones, which is a change of composition and not just
+    a change of size, so `sizes` alone cannot express it. Two <Image>
+    components toggled with `hidden` would not do either: a display:none
+    image is still fetched, so every phone would pay for the desktop file.
+
+    getImageProps gives the optimiser's srcSet without rendering an <img>,
+    which is what lets a single <picture> hold both and let the browser pick
+    one. It is the pattern in the Next 16 image docs under Art Direction.
+
+    Not preloaded, on purpose. A preload link names one file in the <head>,
+    and which file this hero wants depends on the viewport: preloading the
+    desktop lineup on a phone costs more than the preload saves, which is why
+    the docs say not to preload when the LCP element changes with the screen.
+    The documented substitute is here instead: loading="eager" so it never
+    waits for lazy loading, and fetchPriority="high" so it is requested with
+    the urgency a preload would have given it. Media-scoped <link rel=preload>
+    tags were tried and dropped: React left them in the body rather than
+    hoisting them to the head, where they would have been parsed a few bytes
+    before the <img> itself and bought nothing.
+  */
+  const common = {
+    alt:
+      "Vehicles from the Extra Cabs and Rent a Cars fleet lined up on a red " +
+      "stage, led by a red Toyota C-HR with a Toyota Prius and a Suzuki " +
+      "Wagon R beside it",
+    // The stage is one shell wide, not one viewport wide. It stops growing at
+    // --shell (1280px), so above that the old "100vw" asked the browser for an
+    // image up to twice the width it renders at.
+    sizes: "(min-width: 1280px) 1280px, 100vw",
+  };
+
+  const {
+    props: { srcSet: desktop },
+  } = getImageProps({
+    ...common,
+    src: "/images/home/home-new-vehicles-lineup.png",
+    width: 1774,
+    height: 887,
+  });
+
+  const {
+    props: { srcSet: mobile, ...img },
+  } = getImageProps({
+    ...common,
+    src: "/images/home/home-new-vehicles-lineup-mobile.png",
+    width: 2000,
+    height: 2000,
+  });
+
   return (
     <section className="pt-[calc(4.75rem+var(--gap)+2rem)] text-center sm:pt-[calc(5.5rem+var(--gap)+3rem)]">
       <Shell>
@@ -37,28 +90,40 @@ export function Hero() {
           <h1 className="display-hero text-brand">Extra Cabs</h1>
 
           {/*
-            hero-fleet.png is a 2000x2000 square, but the vehicles only occupy
-            y 788 to 1514 of it. That is 39% dead transparent space above the cars
-            and 24% below, so `object-contain` in any box leaves a large invisible
-            gap that no margin can close, and shrinks the cars to fit padding.
+            Both files are mostly transparent padding, so the frame is cropped
+            to the artwork with object-cover and the vertical object-position
+            is DERIVED, not guessed. Measured opaque boxes:
 
-            So: a 5:2 frame cropped to the artwork with object-cover. The vertical
-            object-position is derived, not guessed. The content centre sits at
-            1151.5/2000 = 57.6% of the source. For a box of height 0.4W holding an
-            image scaled to height W, the overflow is 0.6W, and centring that band
-            needs 0.3755W / 0.6W = 62.6%.
+              desktop  1774x887,   cars y 301 to 652   (34% dead above, 26% below)
+              mobile   2000x2000,  cars y 788 to 1515  (39% above, 24% below)
 
-            If the image is ever replaced, re-measure and update this number.
+            For a frame of ratio R holding an image of source ratio S scaled to
+            fill the width, with the content centred at fraction c of the source
+            height, the position that centres the cars is
+
+              p = (c/S - 1/2R) / (1/S - 1/R)
+
+            desktop: c = 476.5/887 = 0.5372, S = 2, R = 5   ->  56.2%
+            mobile:  c = 1151.5/2000 = 0.5758, S = 1, R = 2.5 ->  62.6%
+
+            The two frames differ because the two photographs do: the desktop
+            lineup is a 5:1 strip of eight vehicles, the phone one is a 2.7:1
+            group of three. A single ratio would leave one of them swimming in
+            empty space, which is the fault this crop exists to avoid.
+
+            If either image is replaced, re-measure and redo this arithmetic.
           */}
-          <div className="relative -mt-4 aspect-[5/2] w-full sm:-mt-8 lg:-mt-12">
-            <Image
-              src="/images/home/hero-fleet.png"
-              alt="Extra Cabs and Rent a Cars fleet: Toyota C-HR, Toyota Prius and Suzuki Wagon R Stingray"
-              fill
-              priority
-              sizes="100vw"
-              className="object-cover [object-position:50%_62.6%]"
-            />
+          <div className="relative -mt-4 aspect-[5/2] w-full sm:-mt-8 md:aspect-[5/1] lg:-mt-12">
+            <picture>
+              <source media="(min-width: 768px)" srcSet={desktop} />
+              <img
+                {...img}
+                srcSet={mobile}
+                loading="eager"
+                fetchPriority="high"
+                className="absolute inset-0 size-full object-cover [object-position:50%_62.6%] md:[object-position:50%_56.2%]"
+              />
+            </picture>
           </div>
         </div>
 

@@ -45,6 +45,8 @@ function applyOverride(car: Car, override: VehicleOverride | undefined): Car {
       ...car.specs,
       seats: override.seats ?? car.specs.seats,
       doors: override.doors ?? car.specs.doors,
+      fuel: override.fuel ?? car.specs.fuel,
+      hybrid: override.hybrid ?? car.specs.hybrid,
     },
     pricing: {
       daily: override.daily ?? car.pricing.daily,
@@ -75,6 +77,7 @@ function createdToCar(vehicle: CreatedVehicle): Car {
       luggage: vehicle.luggage,
       transmission: vehicle.transmission,
       fuel: vehicle.fuel,
+      hybrid: vehicle.hybrid,
       engineCc: vehicle.engineCc,
       airConditioned: true,
     },

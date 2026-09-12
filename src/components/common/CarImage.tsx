@@ -7,7 +7,10 @@ interface CarImageProps {
   /** Shown inside the placeholder while the real photo is missing. */
   label?: string;
   sizes?: string;
-  priority?: boolean;
+  /** Preload this one. For the single LCP image on a page. See SafeImage. */
+  preload?: boolean;
+  /** Skip lazy loading without preloading. For the first tile in a grid. */
+  eager?: boolean;
   className?: string;
 }
 
@@ -27,7 +30,8 @@ export function CarImage({
   alt,
   label,
   sizes,
-  priority,
+  preload,
+  eager,
   className,
 }: CarImageProps) {
   return (
@@ -36,7 +40,8 @@ export function CarImage({
       alt={alt}
       fit="cover"
       sizes={sizes}
-      priority={priority}
+      preload={preload}
+      eager={eager}
       className={className}
       fallback={
         <>

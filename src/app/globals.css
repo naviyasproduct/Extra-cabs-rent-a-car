@@ -5,8 +5,9 @@
 
    The site runs on one theme: a true-black page with everything floating on it.
 
-     signal red   #E01B22  (the 3D "EXTRA" lettering) - kept for fills
-     hot red      #FF5B61  (the same red, lifted until it reads on black)
+     signal red   #FF5151  (the brand red, client's choice) - fills and text
+     hot red      #FF7A7A  (the same red lifted, for accents on black)
+     pressed red  #FF3B3B  (the fill, deepened, for hover)
      statement    #0F1A33  (deep navy slab - the loudest surface on the page)
      page         #000000  (true black - never a soft charcoal)
 
@@ -15,14 +16,31 @@
    onto it. Elevation runs UP from black: page -> surface -> surface-alt.
 --------------------------------------------------------------------------- */
 @theme {
-  /* Brand. `brand` is the fill - white text sits on it. `brand-bright` is the
-     same red pushed up until it is legible as text against black. */
-  --color-brand: #e01b22;
-  --color-brand-hover: #f5343b;
-  --color-brand-bright: #ff5b61;
-  --color-brand-deep: #8e1420;
-  --color-brand-tint: rgba(255, 58, 64, 0.14);
-  --color-brand-tint-strong: rgba(255, 58, 64, 0.26);
+  /* Brand. `brand` is the fill and, on black, the wordmark. `brand-bright`
+     is the same red lifted for small accents. Change these six values and the
+     whole site changes with them: nothing anywhere hardcodes a red, with the
+     two documented exceptions in icon.tsx and opengraph-image.tsx, which
+     render through Satori and cannot read a stylesheet.
+
+     HOVER GOES DARKER, NOT LIGHTER. That is the opposite of the old palette
+     and it is deliberate: the fill is now light enough that lifting it further
+     would drop white label text to 2.8:1. Deepening it instead takes white
+     from 3.21:1 to 3.53:1 and still reads as a state change.
+
+     Contrast, measured: white on brand 3.21:1, brand on black 6.55:1,
+     brand-bright on black 8.32:1. The first of those is below the 4.5:1 that
+     WCAG AA asks of normal text, and it is the price of a red this light: no
+     red bright enough to read as #ff5151 can carry white text at AA. It
+     clears the 3:1 bar for large text and for UI components. The two ways out,
+     if it ever matters, are a darker fill behind white text or near-black
+     label text on this fill (6.28:1), and both are visible changes. */
+  --color-brand: #ff5151;
+  --color-brand-hover: #ff3b3b;
+  --color-brand-bright: #ff7a7a;
+  /* Declared for completeness, currently unused anywhere in the app. */
+  --color-brand-deep: #b83232;
+  --color-brand-tint: rgba(255, 81, 81, 0.14);
+  --color-brand-tint-strong: rgba(255, 81, 81, 0.26);
 
   /* Neutrals - cool, never warm. Contrast-checked against #000. */
   --color-ink: #e9edf5;
@@ -129,10 +147,12 @@
      grow, expressed against the viewport HEIGHT rather than its width.
      Everything else on the page is sized off width alone, which is right until
      a screen is wide but short. A tablet in landscape, or a short laptop, then
-     gets a 5:2 vehicle band taller than half the screen, and the paragraph and
+     gets a vehicle band taller than half the screen, and the paragraph and
      the button below it fall off the bottom.
-     The stage is a 5:2 frame, so a width of 125svh is a band exactly 50svh
-     tall. Both the stage and the wordmark are bounded by this one number, so
+     The band is 5:2 below 768px and 5:1 above it (two photographs, two
+     compositions, see Hero.tsx), so a width of 125svh is a band of at most
+     50svh and, on desktop, 25svh.
+     Both the stage and the wordmark are bounded by this one number, so
      they shrink together and the composition is preserved rather than
      rebalanced. On a phone, and on a laptop around 1080p, it never binds.
      Lower it to make the hero smaller on short screens, raise it to let the
@@ -303,7 +323,7 @@
   }
 
   /* The home hero stage: the wordmark, and the vehicles pulled up into it.
-     Full width, until the screen is too short to hold a 5:2 band at that
+     Full width, until the screen is too short to hold the vehicle band at that
      width, at which point --hero-cap bounds it and it centres. See the token
      for why. Nothing else on the site is bounded by viewport height. */
   .hero-stage {

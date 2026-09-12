@@ -81,10 +81,31 @@ export default async function PanelVehicle({
             <Field label="Name" name="name" defaultValue={car.name} />
             <Field label="Seats" name="seats" type="number" defaultValue={car.specs.seats} />
             <Field label="Doors" name="doors" type="number" defaultValue={car.specs.doors} />
+
+            {/* Fuel is editable here, not frozen at creation, because the
+                catalogue vehicles were shipped with "hybrid" recorded as their
+                fuel and that had to be correctable without a deploy. */}
+            <SelectField
+              label="Fuel"
+              name="fuel"
+              defaultValue={car.specs.fuel}
+              options={["petrol", "diesel", "electric"]}
+            />
+
             <Field label="Daily rate LKR" name="daily" type="number" defaultValue={car.pricing.daily} />
             <Field label="Weekly rate LKR" name="weekly" type="number" defaultValue={car.pricing.weekly} />
             <Field label="Monthly rate LKR" name="monthly" type="number" defaultValue={car.pricing.monthly} />
             <Field label="Deposit LKR" name="deposit" type="number" defaultValue={car.pricing.deposit} />
+
+            <label className="flex items-center gap-2.5 self-end pb-2 text-sm">
+              <input
+                type="checkbox"
+                name="hybrid"
+                defaultChecked={car.specs.hybrid}
+                className="size-4 accent-brand"
+              />
+              <span className="text-ink-soft">Hybrid</span>
+            </label>
 
             <label className="flex items-center gap-2.5 self-end pb-2 text-sm">
               <input
@@ -200,6 +221,35 @@ function TextArea({
         className="bg-field p-3 text-sm leading-relaxed text-ink disabled:opacity-50"
       />
       {hint ? <span className="text-xs text-muted">{hint}</span> : null}
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  name,
+  options,
+  defaultValue,
+}: {
+  label: string;
+  name: string;
+  options: string[];
+  defaultValue: string;
+}) {
+  return (
+    <label className="flex flex-col gap-1">
+      <span className="text-xs uppercase tracking-[0.12em] text-muted">{label}</span>
+      <select
+        name={name}
+        defaultValue={defaultValue}
+        className="h-11 bg-field px-3 text-sm text-ink disabled:opacity-50"
+      >
+        {options.map((option) => (
+          <option key={option} value={option}>
+            {option}
+          </option>
+        ))}
+      </select>
     </label>
   );
 }

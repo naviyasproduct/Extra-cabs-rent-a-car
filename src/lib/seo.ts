@@ -25,9 +25,20 @@ const ORGANISATION_ID = `${siteUrl}/#organisation`;
 const fuelLabels: Record<Car["specs"]["fuel"], string> = {
   petrol: "Petrol",
   diesel: "Diesel",
-  hybrid: "Hybrid",
   electric: "Electric",
 };
+
+/**
+ * What goes in schema.org `fuelType`.
+ *
+ * A hybrid is described as "Petrol hybrid" rather than as a fuel of its own:
+ * the vehicle genuinely takes petrol, and the pairing is what people search
+ * for.
+ */
+function fuelDescription(specs: Car["specs"]): string {
+  const fuel = fuelLabels[specs.fuel];
+  return specs.hybrid ? `${fuel} hybrid` : fuel;
+}
 
 /**
  * The agency itself. AutoRental is the schema.org type for a vehicle rental
@@ -42,7 +53,10 @@ export function organisationLd(locations: Location[] = []) {
     legalName: site.legalName,
     description: site.description,
     url: absoluteUrl("/"),
-    image: absoluteUrl("/images/home/hero-fleet.png"),
+    // The current hero. Kept in step with Hero.tsx on purpose: this is the
+    // picture search results and link previews show for the business, and a
+    // JSON-LD pointing at a retired file is a broken card waiting to happen.
+    image: absoluteUrl("/images/home/home-new-vehicles-lineup.png"),
     telephone: site.phone,
     email: site.email,
     foundingDate: String(site.established),
@@ -114,7 +128,7 @@ export function carLd(car: Car) {
     vehicleSeatingCapacity: car.specs.seats,
     vehicleTransmission:
       car.specs.transmission === "automatic" ? "Automatic" : "Manual",
-    fuelType: fuelLabels[car.specs.fuel],
+    fuelType: fuelDescription(car.specs),
     vehicleEngine: {
       "@type": "EngineSpecification",
       engineDisplacement: {

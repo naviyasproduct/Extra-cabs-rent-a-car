@@ -183,6 +183,16 @@ export interface Enquiry {
 /* -------------------------------------------------------------------------- */
 
 /**
+ * What a vehicle actually burns.
+ *
+ * Mirrors FuelType in src/types/car.ts, spelled out rather than imported so
+ * the panel types stay a standalone description of what is on disk. Hybrid is
+ * deliberately absent: a hybrid runs on petrol, and the drivetrain is its own
+ * boolean.
+ */
+export type PanelFuel = "petrol" | "diesel" | "electric";
+
+/**
  * Changes layered over the static fleet in src/lib/data/cars.ts.
  *
  * The catalogue file stays untouched so the panel never has to rewrite source
@@ -205,6 +215,10 @@ export interface VehicleOverride {
   withDriverDaily?: number | null;
   seats?: number;
   doors?: number;
+  /** What the vehicle burns. Hybrid is a separate flag, not a fuel. */
+  fuel?: PanelFuel;
+  /** Petrol or diesel engine paired with an electric motor. */
+  hybrid?: boolean;
   /** ISO timestamp. Soft delete: hidden everywhere, restorable for 30 days. */
   deletedAt?: string | null;
 }
@@ -226,7 +240,9 @@ export interface CreatedVehicle {
   doors: number;
   luggage: number;
   transmission: "automatic" | "manual";
-  fuel: "petrol" | "diesel" | "hybrid" | "electric";
+  fuel: PanelFuel;
+  /** Petrol or diesel engine paired with an electric motor. */
+  hybrid: boolean;
   engineCc: number;
   daily: number;
   weekly: number;

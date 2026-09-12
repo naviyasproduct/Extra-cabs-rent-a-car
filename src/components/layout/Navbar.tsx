@@ -83,7 +83,7 @@ export function Navbar() {
               : "bg-overlay/70 backdrop-blur-xl",
           )}
         >
-          <Logo />
+          <Logo variant="image" />
 
           {/* Desktop links */}
           <ul className="hidden items-center gap-1 lg:flex">

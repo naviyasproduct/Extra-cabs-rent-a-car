@@ -4,7 +4,7 @@
 without reading the whole codebase. If something here is wrong, fix it here
 rather than working around it.
 
-Last updated: **2026-09-08**
+Last updated: **2026-09-11**
 
 ---
 
@@ -178,8 +178,13 @@ The whole visual language is three files: `src/app/globals.css`,
 - No glows, no coloured shadows, no gradient shine, no background patterns.
   Surfaces are flat; shadows are neutral and tight.
 - Cards deliberately overlap section seams (`--overlap`).
-- Colours are from the logo: signal red `#E01B22`, deep maroon `#8E1420`,
-  graphite, warm paper. **No blues, violets, or default framework greys.**
+- Colours are from the logo: signal red `#FF5151`, lifted to `#FF7A7A` for
+  accents on black and deepened to `#FF3B3B` on hover, plus graphite and warm
+  paper. **No blues, violets, or default framework greys.** The red lives in
+  six tokens in `globals.css` and nothing hardcodes it, except `icon.tsx` and
+  `opengraph-image.tsx`, which render through Satori and cannot read CSS.
+  **White on the brand fill is 3.21:1**, below AA for normal text; see the
+  note beside the tokens before making that worse.
 - **Flat and hard-edged** (client instruction, 2026-09-06). No background boxes
   on content, no rounded corners. Both are controlled by tokens in
   `globals.css`, not by classes in components:
@@ -1240,6 +1245,338 @@ traffic), and the two employees' numbers typed into `/panel/team`.
 > `.next/dev/types/validator.ts`. Delete a route folder and `tsc --noEmit`
 > keeps failing on the stale entry until `.next/dev/types` is removed. The
 > error names a file that no longer exists, which reads like a broken import.
+
+### 2026-09-11 - Hybrid is a drivetrain, not a fuel. Rate off the tiles
+
+Client, twice over: the vehicle tiles should not lead with the daily rate, and
+the fuel line says "Hybrid", which is not a fuel. A hybrid still takes petrol,
+so the vehicle page was answering "what does this take at the pump" with an
+answer nobody can put in a tank.
+
+**The split**
+
+- `FuelType` is now `petrol | diesel | electric`. **Hybrid is gone from it**
+  and lives in the new `CarSpecs.hybrid` boolean.
+- Five catalogue vehicles were recorded as `fuel: "hybrid"`: the C-HR, Prius,
+  Wagon R Stingray, Aqua and Vezel. All five are now `fuel: "petrol"` with
+  `hybrid: true`. The other seven gained `hybrid: false`.
+- The vehicle page shows the real fuel and, **only when the vehicle is a
+  hybrid**, a seventh Drivetrain cell reading "Hybrid". A `Drivetrain:
+  Standard` cell on nine vehicles would be noise, and on the Leaf it would be
+  nonsense.
+- schema.org `fuelType` is built by `fuelDescription()` in `seo.ts`:
+  "Petrol hybrid" for a hybrid, plain "Petrol" or "Diesel" otherwise. The
+  vehicle meta description follows the same wording.
+
+**Tiles**
+
+`CarCard` now shows **seats, fuel, gearbox**. The daily rate cell is gone. The
+client confirmed it should go from the fleet page as well as the home page, so
+this is one component with no variant. `/fleet` keeps its maximum-price filter
+and its two price sorts, which still work against a number the tile no longer
+prints; worth a look if that reads oddly in use.
+
+**Filtering**
+
+Hybrid was an option in the fleet page's fuel dropdown, which is exactly the
+confusion being removed. It is now a **Hybrid only** checkbox under that
+dropdown, and `CarFilters.hybrid` narrows rather than replaces: "petrol" and
+"hybrid only" are two answerable questions at once. Asking for petrol now
+returns the hybrids too, because they burn petrol.
+
+**Panel**
+
+- The add form's Fuel select offers petrol, diesel and electric, with a
+  **Hybrid** tick box beside it.
+- **Fuel and the hybrid flag are editable after creation**, unlike the other
+  specs. Deliberate: the twelve catalogue vehicles shipped with "hybrid"
+  recorded as their fuel, and that had to be correctable without a deploy.
+  `VehicleOverride` gained `fuel` and `hybrid` to make that possible.
+- `fuelChoice()` and `checkbox()` joined the parsers in `vehicle-form.ts`.
+  `fuelChoice` pins anything unrecognised to petrol, which matters because
+  "hybrid" was a valid value until today and a stale form can still post it.
+- **`hydrate()` in `store.ts` migrates the store on read**: a created vehicle
+  or an override holding `fuel: "hybrid"` becomes petrol with the flag set.
+  This is the first thing in `hydrate()` that rewrites a stored value rather
+  than filling a missing one, and the doc comment there now says when that is
+  allowed: only when the old value can no longer be represented.
+- The audit summary mentions a fuel or hybrid change like any other edit.
+
+**Proven, not assumed.** 22 checks against the real modules, run through
+`node --experimental-strip-types` with a small resolver for the `@/` alias
+rather than a temporary API route, so nothing had to be added to the app and
+deleted afterwards. The script snapshotted `.data/panel.json` and restored it
+in a `finally`, and the last assertion is that the dev store came back as it
+was found. Covered: a posted `fuel=hybrid` never reaches the store; a stored
+vehicle and a stored override both migrate; a migrated vehicle arrives at
+`listVehicles()` as petrol plus hybrid; no vehicle anywhere reports hybrid as
+a fuel; "hybrid only" returns only hybrids; petrol includes the hybrids;
+diesel excludes them.
+
+**Verified** on a served production build: the home page has zero "LKR / day"
+and eight tiles each carrying Fuel and Gearbox, with no "Hybrid" anywhere. The
+Prius page reads Fuel "Petrol" plus Drivetrain "Hybrid" and emits
+`"fuelType":"Petrol hybrid"`; the Prado reads Diesel and the Leaf Electric,
+neither with a Drivetrain cell. `/fleet` renders the Hybrid only checkbox and
+no `<option value="hybrid">`. The two panel forms were fetched as the owner,
+with the session cookie minted from the app's own `createSessionValue()`: the
+add form offers three fuels and the tick box, and the Prius edit form comes
+back with petrol selected and Hybrid checked. `tsc` clean, build passes, 34
+routes.
+
+> **Worth keeping: the TypeScript modules can be run directly.**
+> `node --experimental-strip-types` plus a ~25 line resolve hook that maps
+> `@/` and stubs `next/server` and `next/headers` runs the real `src/lib`
+> modules outside Next. That is a lighter way to prove data-layer behaviour
+> than the temporary-API-route pattern used in earlier sessions, and it avoids
+> the stale `.next/dev/types` trap that follows deleting a route.
+
+### 2026-09-11 (later) - New hero photographs, and three next/image warnings
+
+Client: fix the three warnings `next dev` prints, and put the two new lineup
+photographs on the home page, the wide one for desktop and the other for
+phones.
+
+**The hero is now art directed** (`Hero.tsx`)
+
+`home-new-vehicles-lineup.png` (1774x887, eight vehicles) on desktop,
+`home-new-vehicles-lineup-mobile.png` (2000x2000, three vehicles) below 768px.
+
+- **One download, not two.** Two `<Image>` components toggled with `hidden`
+  would have made every phone fetch the desktop file as well: a display:none
+  image is still fetched. So this is `getImageProps()` feeding a `<picture>`,
+  which is the Art Direction pattern in the Next 16 image docs, and the
+  browser picks one.
+- **Two frames, because the two photographs are different shapes.** The
+  desktop lineup is a 5:1 strip; the phone one is 2.7:1. The frame is
+  `aspect-[5/2] md:aspect-[5/1]`, and the vertical `object-position` is
+  derived with the same formula the old hero used, re-run against freshly
+  measured opaque boxes: **56.2% on desktop, 62.6% on mobile**. The mobile
+  number is unchanged from the old hero because that file has almost exactly
+  the same geometry. The working is written out in the component.
+- A single 5:2 frame for both would have left the desktop lineup swimming in
+  half a frame of empty transparent space, which is the exact fault the
+  2026-09-06 crop work removed.
+- `--hero-cap` is untouched at `125svh`. Its comment was, because the band it
+  bounds is now 5:2 on phones and 5:1 above them.
+- **`hero-fleet.png` is now unreferenced by any page.** It is still in
+  `public/images/home/`, not deleted. The one thing that still pointed at it,
+  the `image` on the business JSON-LD in `seo.ts`, now points at the new
+  desktop lineup, so search results and link previews show what the site
+  actually shows.
+
+**Warning 1: LCP image not preloaded**
+
+The vehicle page's gallery plate **already had `priority`** and was already
+preloaded; that was confirmed in the served HTML before anything was changed.
+The images that were genuinely lazy, and genuinely the largest thing on their
+page, were the **vehicle tiles**: `/fleet` had no eager image at all, and on
+the home page the first tile is `fleet-01.jpg`, the file the warning named.
+
+- `CarCard` takes an `eager` prop; `FeaturedFleet` and `FleetBrowser` pass it
+  to the first tile only.
+- **Eager, not preloaded.** Which tile is largest depends on the viewport and,
+  on `/fleet`, on the filters, and the docs say not to preload when the LCP
+  element moves like that. An eager `<img>` still gets a preload link hoisted
+  for it anyway, which was verified in the built HTML.
+
+> **Next 16 deprecated `priority` in favour of `preload`.** They are the same
+> switch internally (`preload: preload || priority`) and passing both throws.
+> `SafeImage` and `CarImage` now expose `preload` and `eager` instead of
+> `priority`, and `CarGallery` uses `preload`. The dev warning has changed
+> wording to match: it now asks for `loading="eager"`, not for `priority`.
+
+**Warning 2: missing `data-scroll-behavior`**
+
+`globals.css` sets `scroll-behavior: smooth`. Next 16 stopped overriding that
+during a route change, so a navigation was smooth-scrolling to the top of the
+new page instead of landing there. `data-scroll-behavior="smooth"` on `<html>`
+in the root layout opts back in: Next forces `auto` for the jump and restores
+it afterwards, so in-page anchors stay smooth. Read the mechanism in
+`node_modules/next/dist/shared/lib/router/utils/disable-smooth-scroll.js`.
+
+**Warning 3: `sizes` mismatch on the hero**
+
+The warning fires when a `fill` image has `sizes="100vw"` and renders at under
+60% of the viewport. The hero is **one shell wide, not one viewport wide**: it
+stops at `--shell` (1280px), so on a 2560px monitor it was asking for an image
+twice the width it draws at. It is now
+`sizes="(min-width: 1280px) 1280px, 100vw"`.
+
+> Not the `(max-width: 768px) 100vw, 50vw` in the request. 50vw would be wrong
+> here: the hero is full width at every breakpoint, and it is the shell cap,
+> not a column, that limits it.
+
+**Verified**
+
+- `tsc` clean, build passes, 34 routes.
+- Read the **shipped stylesheet**, since a Tailwind arbitrary value fails
+  silently: `.md\:aspect-\[5\/1\]` is emitted (as `aspect-ratio:5`, which is
+  the same thing normalised), both object-position utilities are there, and
+  the 5:1 rule sits inside the `md` block.
+- Served build: `<html ... data-scroll-behavior="smooth">`, one `<source
+  media="(min-width: 768px)">` carrying the desktop file with the mobile file
+  on the `<img>`, `loading="eager"` and `fetchPriority="high"` on it, the
+  vehicle page still preloading its gallery plate, and the first tile of the
+  home and `/fleet` grids eager with every other tile still lazy.
+- The optimiser serves both new files: **28KB of WebP at 640px** and 126KB at
+  1920px, against 438KB and 898KB of source PNG.
+- The crops were checked by rendering them, not by trusting the arithmetic:
+  both frames were reproduced with sharp at real widths and looked at.
+- Still not seen in a real browser. There is no browser tooling in this repo,
+  so the LCP claim in particular is reasoned from the served HTML and from the
+  warning's own condition in `next/dist/shared/lib/get-img-props.js`, not
+  measured with one.
+
+### 2026-09-11 (last) - The brand red is now #FF5151
+
+Client: the red used for buttons, text and boxes should be `#ff5151`, or
+lighter in that vibe.
+
+**A token change, not a sweep.** Nothing in the app hardcodes a red, so this
+is six values in `globals.css` plus the two files that cannot read CSS.
+
+| Token | Was | Now |
+| --- | --- | --- |
+| `--color-brand` | `#e01b22` | **`#ff5151`** |
+| `--color-brand-hover` | `#f5343b` | **`#ff3b3b`** |
+| `--color-brand-bright` | `#ff5b61` | **`#ff7a7a`** |
+| `--color-brand-deep` | `#8e1420` | `#b83232` (declared, unused) |
+| `--color-brand-tint` | `rgba(255, 58, 64, .14)` | `rgba(255, 81, 81, .14)` |
+| `--color-brand-tint-strong` | `rgba(255, 58, 64, .26)` | `rgba(255, 81, 81, .26)` |
+
+**Hover now goes darker, not lighter.** The old palette lifted the fill on
+hover because the fill was dark. At this lightness that backfires: white label
+text on a lifted `#ff6a6a` is 2.79:1, worse than the resting state. Deepening
+to `#ff3b3b` instead takes white from 3.21:1 to 3.53:1 and still reads as a
+state change.
+
+**Also updated, because Satori cannot read a stylesheet:** `src/app/icon.tsx`
+(the favicon) and `src/app/opengraph-image.tsx` (the share card, which carried
+both the fill and the old bright red). Both carry a comment saying they must
+move with the tokens.
+
+> **Contrast, measured, and worth knowing.** White on the new brand fill is
+> **3.21:1**, down from 4.83:1. That is below the 4.5:1 WCAG AA asks of normal
+> text, and it is inherent to a red this light: no red bright enough to read as
+> `#ff5151` can carry white text at AA. It still clears the 3:1 bar for large
+> text and UI components, and everything else improved: the wordmark and other
+> red-on-black text went from 4.35:1 to **6.55:1**, and accents from 6.92:1 to
+> **8.32:1**. If the button text ever has to pass AA, the two ways out are a
+> darker fill behind white text, or near-black text on this fill (6.28:1).
+> Both are visible changes and neither was made unilaterally.
+
+**Verified**
+
+- `tsc` clean, build passes, 34 routes.
+- Read the **shipped stylesheet**: `--color-brand:#ff5151`,
+  `--color-brand-hover:#ff3b3b`, `--color-brand-bright:#ff7a7a` and
+  `--color-brand-tint:#ff515124` are all emitted, and there are **zero**
+  occurrences of `e01b22`, `ff5b61` or `f5343b` left in it.
+- The favicon and the Open Graph card were **rendered and sampled pixel by
+  pixel**, not assumed: the icon is `#ff5151` and the card's palette is
+  `#000000`, `#e9edf5`, `#ff5151`, `#adb7c9`, `#ff7a7a`.
+- Contrast figures above come from a WCAG relative-luminance calculation, not
+  from eyeballing.
+
+### 2026-09-11 (nav) - The logo artwork is in the navbar
+
+Client dropped `nav--bar-logo.png` into `public/images/home` and asked for it in
+the navigation bar.
+
+**The file needed cropping first.** It is a 2000x2000 square whose artwork
+occupies `x 75 to 1950, y 840 to 1246`: **80% of it is empty**, the same trap
+the hero images had. Used as supplied, the browser would download a mostly
+blank square and the optimiser would decode 4 megapixels to paint a 166x36
+strip. So it is cropped to its own edges and resized to 768px wide, written to
+**`public/images/brand/nav-logo.png`**: **207KB becomes 37KB**, and 18.6KB of
+WebP on the wire at 2x.
+
+- The original is **left untouched** in `public/images/home/`. Nothing
+  references it now, so it can be deleted whenever the client is happy.
+- New folder, `public/images/brand/`, because a logo is not home-page imagery.
+
+**`Logo` now has two forms** (`src/components/layout/Logo.tsx`)
+
+| `variant` | What it renders | Where |
+| --- | --- | --- |
+| `"image"` | the artwork | the navbar |
+| `"text"` (default) | the typographic lockup, unchanged | the footer |
+
+The footer keeps the text form on purpose: it spells out "Cabs & Rent a Cars",
+which the artwork does not carry, and it is the only place on the page the full
+business name appears in text. Say the word if it should be the artwork there
+too; it is one prop.
+
+- Sized by height (`h-9 lg:h-10`) with `w-auto`, so the 4.6:1 mark sits inside
+  the 64px bar (72px at lg) with room to spare, at 166x36 CSS px.
+- `width={184} height={40}` is the **rendered** size, not the file's. That is
+  what makes next/image emit a 256w 1x and 384w 2x srcset instead of asking
+  for the 768px source.
+- `loading="eager"`: it is above the fold on every page, and a lazy logo leaves
+  a hole where the brand should be.
+- `alt=""`, because the `<Link>` already carries
+  `aria-label="Extra Cabs & Rent a Cars, home"`. Labelling both would announce
+  the name twice.
+
+> **The artwork's red is the OLD red.** Sampled: it clusters around `#e02e2f`
+> and `#e72729`, which is the `#e01b22` family the site moved away from earlier
+> today. So the navbar mark reads slightly deeper than the `#ff5151` now used
+> everywhere else. Left as supplied rather than recoloured, because shifting a
+> 3D gradient by filter is a good way to ruin it: the fix belongs in whatever
+> the artwork was made in.
+
+**Verified**
+
+- `tsc` clean, build passes, 34 routes.
+- Served build: the header's `<img>` carries the cropped asset with
+  `srcSet="...w=256 1x, ...w=384 2x"`, `loading="eager"`, `alt=""`, the link
+  keeps its aria-label, and the footer still renders the text lockup.
+- The optimiser returns **18,584 bytes of WebP** for the 2x candidate.
+- The mark was **rendered at its true 166x36 size** on the navbar's own
+  background and looked at, not assumed: "EXTRA" is crisp and the two car
+  outlines still read, though their thinnest strokes soften at that height.
+
+### 2026-09-11 (nav, again) - Second logo artwork, and a caching trap
+
+Client supplied a revised mark, `public/images/home/nav-bar-logo-new.png`. Same
+composition, but the two car outlines are **white instead of pale pink**, which
+reads much better against the dark bar at 36px.
+
+- Cropped to its opaque box (`x 49 to 1912, y 802 to 1198`, 4.695:1) and
+  resized to 768px wide, as before: **160KB becomes 28KB**, 14.7KB of WebP on
+  the wire at 2x.
+- The declared size moved from `width={184}` to `width={188}`, because the new
+  artwork is very slightly wider in proportion. That number is the rendered
+  size at `h-10`, and it is what keeps the srcset at 256w/384w.
+
+> **The trap, and it cost a round of verification.** The new artwork was first
+> written over `public/images/brand/nav-logo.png`, the same path as v1. The
+> built page then served **the old logo**: the image optimiser caches by URL,
+> so identical params plus a changed file on disk still hit the cached entry in
+> `.next/cache`. It was caught by decoding the served WebP and counting white
+> pixels against the file on disk: 0 white in what was served, 2269 in what was
+> on disk.
+>
+> The fix is a **new filename**, `nav-logo-v2.png`, not a cleared cache: every
+> browser and CDN that already fetched the old URL has the same stale copy, and
+> only a new URL reaches all of them. There is a comment on the `src` in
+> `Logo.tsx` saying so. **Replace this artwork by adding a file, never by
+> overwriting one.**
+
+`nav-logo.png` (v1) was deleted, since nothing referenced it and leaving the
+superseded artwork under the more obvious name is a trap of its own. The
+client's own uploads in `public/images/home/` are untouched and can be deleted
+whenever they are happy.
+
+**Still the old red.** The new artwork's lettering samples at `#e72a2c` and
+`#ec282a`, the same deep family as before, against the `#ff5151` the rest of
+the site now uses. Unchanged from the note in the previous entry.
+
+**Verified** on a served production build: the header requests
+`nav-logo-v2.png` at 256w 1x and 384w 2x, and the **served WebP was decoded and
+compared against the source pixel counts** rather than trusted, which is the
+only reason the stale cache was caught at all. `tsc` clean, build passes.
 
 ---
 

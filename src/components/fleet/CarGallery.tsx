@@ -35,7 +35,7 @@ export function CarGallery({
           alt={`${name}, view ${active + 1}`}
           label={name}
           sizes="(max-width: 1024px) 100vw, 60vw"
-          priority
+          preload
         />
         {badge ? (
           <div className="absolute left-4 top-4">

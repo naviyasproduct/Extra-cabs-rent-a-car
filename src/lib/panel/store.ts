@@ -136,8 +136,11 @@ let diskWritable = true;
  *
  * The file on disk was written by an older shape of the code, so a new array
  * is `undefined` there and the first `.push()` on it throws. Postgres would
- * call this a migration; here it is four lines that run on every read. Only
- * ever add defaults, never overwrite what is already stored.
+ * call this a migration; here it is a few lines that run on every read.
+ *
+ * Add defaults, and do not overwrite a stored value unless it can no longer be
+ * represented. The fuel rewrite below is the one such case: "hybrid" was
+ * removed from the fuel union, so leaving it would be leaving invalid data.
  */
 function hydrate(data: PanelData): PanelData {
   data.messages ??= [];
@@ -145,6 +148,26 @@ function hydrate(data: PanelData): PanelData {
     staff.phone ??= "";
     staff.smsAlerts ??= true;
   }
+
+  // Hybrid used to be one of the fuel options. It is a drivetrain now, so a
+  // vehicle saved as "hybrid" fuel is rewritten to petrol with the flag set.
+  // Without this a store written last week keeps serving "Hybrid" as a fuel
+  // type, which is the exact thing the split was meant to end.
+  for (const vehicle of data.createdVehicles) {
+    if ((vehicle.fuel as string) === "hybrid") {
+      vehicle.fuel = "petrol";
+      vehicle.hybrid = true;
+    }
+    vehicle.hybrid ??= false;
+  }
+
+  for (const override of Object.values(data.vehicleOverrides)) {
+    if ((override.fuel as string) === "hybrid") {
+      override.fuel = "petrol";
+      override.hybrid = true;
+    }
+  }
+
   return data;
 }
 

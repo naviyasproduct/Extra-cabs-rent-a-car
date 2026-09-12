@@ -73,7 +73,17 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en-LK" className={`${body.variable} ${display.variable}`}>
+    <html
+      lang="en-LK"
+      // globals.css sets scroll-behavior: smooth on this element for in-page
+      // anchors. Next 16 stopped overriding that on its own during a route
+      // change, so without this attribute a navigation SMOOTH-SCROLLS to the
+      // top of the new page instead of landing there. The attribute is opt-in
+      // to the old behaviour: Next forces scroll-behavior: auto for the jump
+      // and restores it afterwards, leaving anchor links smooth.
+      data-scroll-behavior="smooth"
+      className={`${body.variable} ${display.variable}`}
+    >
       <body className="min-h-dvh antialiased">{children}</body>
     </html>
   );

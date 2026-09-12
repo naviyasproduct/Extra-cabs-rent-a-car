@@ -16,9 +16,10 @@ const transmissions = [
   { value: "manual", label: "Manual" },
 ];
 
+// Hybrid is not in here. It is a drivetrain, not a fuel, and it has its own
+// checkbox below so "petrol" and "hybrid only" can both be asked at once.
 const fuels = [
   { value: "all", label: "Any fuel type" },
-  { value: "hybrid", label: "Hybrid" },
   { value: "petrol", label: "Petrol" },
   { value: "diesel", label: "Diesel" },
   { value: "electric", label: "Electric" },
@@ -45,6 +46,7 @@ const emptyFilters: CarFilters = {
   category: "all",
   transmission: "all",
   fuel: "all",
+  hybrid: false,
   seats: "all",
   maxDaily: priceCeiling,
   sort: "recommended",
@@ -81,6 +83,7 @@ export function FleetBrowser({
   const isFiltered =
     filters.transmission !== "all" ||
     filters.fuel !== "all" ||
+    filters.hybrid === true ||
     filters.seats !== "all" ||
     (filters.maxDaily ?? priceCeiling) < priceCeiling;
 
@@ -118,6 +121,16 @@ export function FleetBrowser({
             </option>
           ))}
         </Select>
+
+        <label className="mt-2.5 flex items-center gap-2.5 text-sm">
+          <input
+            type="checkbox"
+            checked={filters.hybrid === true}
+            onChange={(event) => update("hybrid", event.target.checked)}
+            className="size-4 accent-brand"
+          />
+          <span className="text-ink-soft">Hybrid only</span>
+        </label>
       </div>
 
       <div>
@@ -253,8 +266,8 @@ export function FleetBrowser({
 
         {results.length > 0 ? (
           <div className="mt-6 grid gap-(--gap) md:grid-cols-2 xl:grid-cols-3">
-            {results.map((car) => (
-              <CarCard key={car.id} car={car} />
+            {results.map((car, index) => (
+              <CarCard key={car.id} car={car} eager={index === 0} />
             ))}
           </div>
         ) : (

@@ -135,11 +135,19 @@ export default async function PanelFleet({
               <FormField label="Seats" name="seats" type="number" placeholder="5" />
               <FormField label="Doors" name="doors" type="number" placeholder="5" />
               <FormField label="Luggage bags" name="luggage" type="number" placeholder="2" />
+              {/* The fuel the vehicle actually takes. Hybrid is the tick box
+                  beside it, not an option in here: a hybrid still runs on
+                  petrol, and the customer needs to read the real fuel. */}
               <SelectField
                 label="Fuel"
                 name="fuel"
                 defaultValue="petrol"
-                options={["petrol", "diesel", "hybrid", "electric"]}
+                options={["petrol", "diesel", "electric"]}
+              />
+              <CheckField
+                label="Hybrid"
+                name="hybrid"
+                text="Petrol or diesel with an electric motor"
               />
               <SelectField
                 label="Transmission"
@@ -327,6 +335,34 @@ function Group({
       <div className="rule mt-2 mb-4" />
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{children}</div>
     </fieldset>
+  );
+}
+
+/** A single yes or no fact about the vehicle, sized like the other fields. */
+function CheckField({
+  label,
+  name,
+  text,
+  defaultChecked = false,
+}: {
+  label: string;
+  name: string;
+  text: string;
+  defaultChecked?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <span className="text-xs uppercase tracking-[0.12em] text-muted">{label}</span>
+      <label className="flex h-11 items-center gap-2.5 bg-field px-3 text-sm text-ink-soft">
+        <input
+          type="checkbox"
+          name={name}
+          defaultChecked={defaultChecked}
+          className="size-4 shrink-0 accent-brand"
+        />
+        {text}
+      </label>
+    </div>
   );
 }
 

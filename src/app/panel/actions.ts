@@ -13,8 +13,10 @@ import { vehicleBySlug } from "@/lib/fleet";
 import { notifyNewBooking, sendTestSms } from "@/lib/sms/notify";
 import { toMsisdn } from "@/lib/sms/textlk";
 import {
+  checkbox,
   clamp,
   featureLines,
+  fuelChoice,
   optionalRate,
   plainText,
 } from "@/lib/panel/vehicle-form";
@@ -209,6 +211,11 @@ export async function updateVehicleAction(formData: FormData) {
     ),
     seats: clamp(num("seats", vehicle.car.specs.seats), 1, 60),
     doors: clamp(num("doors", vehicle.car.specs.doors), 1, 8),
+    fuel: keep("fuel", vehicle.car.specs.fuel, () => fuelChoice(formData.get("fuel"))),
+    // A checkbox submits nothing when unchecked, so this cannot use keep():
+    // an absent key here means "cleared". The whole fieldset is only rendered
+    // to someone who may edit it, so there is no locked-form case to protect.
+    hybrid: checkbox(formData.get("hybrid")),
     daily: num("daily", vehicle.car.pricing.daily),
     weekly: num("weekly", vehicle.car.pricing.weekly),
     monthly: num("monthly", vehicle.car.pricing.monthly),
@@ -256,6 +263,9 @@ export async function updateVehicleAction(formData: FormData) {
     changes.push(`features to ${next.features.length} item${next.features.length === 1 ? "" : "s"}`);
   if (next.seats !== before.specs.seats) changes.push(`seats to ${next.seats}`);
   if (next.doors !== before.specs.doors) changes.push(`doors to ${next.doors}`);
+  if (next.fuel !== before.specs.fuel) changes.push(`fuel to ${next.fuel}`);
+  if (next.hybrid !== before.specs.hybrid)
+    changes.push(next.hybrid ? "marked hybrid" : "no longer hybrid");
   if (next.daily !== before.pricing.daily)
     changes.push(`daily ${before.pricing.daily} to ${next.daily}`);
   if (next.weekly !== before.pricing.weekly)
@@ -337,11 +347,8 @@ export async function createVehicleAction(formData: FormData) {
         String(formData.get("transmission") ?? "automatic") === "manual"
           ? "manual"
           : "automatic",
-      fuel: (String(formData.get("fuel") ?? "petrol") as
-        | "petrol"
-        | "diesel"
-        | "hybrid"
-        | "electric"),
+      fuel: fuelChoice(formData.get("fuel")),
+      hybrid: checkbox(formData.get("hybrid")),
       engineCc: clamp(num("engineCc", 1500), 0, 10000),
       daily,
       // Left blank, the longer rates follow the daily one at the discounts the

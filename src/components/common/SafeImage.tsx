@@ -16,7 +16,22 @@ interface SafeImageProps {
    */
   fit?: "cover" | "contain";
   sizes?: string;
-  priority?: boolean;
+  /**
+   * Insert a <link rel="preload"> for this image.
+   *
+   * Next 16 deprecated `priority` in favour of this; `priority` still works
+   * but the two cannot be passed together. Use it for the ONE image that is
+   * the LCP element on the page. Do not use it where the largest element
+   * changes with the viewport: preloading a file the screen will not show is
+   * worse than not preloading at all.
+   */
+  preload?: boolean;
+  /**
+   * Load immediately without preloading. The right setting for an image that
+   * is above the fold but is one of several candidates for the LCP, such as
+   * the first tile in a grid.
+   */
+  eager?: boolean;
   className?: string;
   fallbackClassName?: string;
 }
@@ -34,7 +49,8 @@ export function SafeImage({
   fallback,
   fit = "cover",
   sizes = "(max-width: 768px) 100vw, (max-width: 1280px) 50vw, 33vw",
-  priority = false,
+  preload = false,
+  eager = false,
   className,
   // Owns the placeholder's surface entirely. Kept out of the base classes so
   // a caller's background never has to fight the default one for specificity.
@@ -65,7 +81,10 @@ export function SafeImage({
       alt={alt}
       fill
       sizes={sizes}
-      priority={priority}
+      preload={preload}
+      // Left undefined rather than set to "lazy": next/image throws when a
+      // preloaded image is also told to load lazily.
+      loading={eager ? "eager" : undefined}
       onError={() => setFailed(true)}
       className={cn(fit === "contain" ? "object-contain" : "object-cover", className)}
     />
