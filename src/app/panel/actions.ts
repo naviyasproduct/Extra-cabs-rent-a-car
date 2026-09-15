@@ -10,6 +10,7 @@ import { hashPassword, newId, readData, writeData } from "@/lib/panel/store";
 import { closeShift, openShift, markAway } from "@/lib/panel/time";
 import { closeWindow, redeemCode, requestWindow, scopeLabel } from "@/lib/panel/window";
 import { vehicleBySlug } from "@/lib/fleet";
+import { saveDocument } from "@/lib/panel/uploads";
 import { notifyNewBooking, sendTestSms } from "@/lib/sms/notify";
 import { toMsisdn } from "@/lib/sms/textlk";
 import {
@@ -26,6 +27,11 @@ import type {
   PaymentMethod,
   WindowScope,
 } from "@/lib/panel/types";
+import type {
+  DocumentSlot,
+  IdDocumentType,
+  UploadedDocument,
+} from "@/types/booking";
 
 /**
  * Every mutation in the panel.
@@ -513,7 +519,10 @@ export async function createBookingAction(input: {
   carSlug: string | null;
   customerName: string;
   phone: string;
+  whatsapp?: string;
   email?: string;
+  idType?: IdDocumentType;
+  documents?: UploadedDocument[];
   pickupLocation?: string;
   pickupDate: string;
   returnDate: string;
@@ -530,6 +539,7 @@ export async function createBookingAction(input: {
     carSlug: input.carSlug,
     customerName: input.customerName,
     phone: input.phone,
+    whatsapp: input.whatsapp ?? "",
     email: input.email ?? "",
     pickupLocation: input.pickupLocation ?? "Heiyanthuduwa office",
     pickupDate: input.pickupDate,
@@ -542,6 +552,8 @@ export async function createBookingAction(input: {
     createdAt: new Date().toISOString(),
     handledBy: null,
     source: input.source ?? "website",
+    idType: input.idType ?? "nic",
+    documents: input.documents ?? [],
   };
 
   writeData((data) => {
@@ -813,4 +825,29 @@ export async function dismissOneTimePasswordAction(formData: FormData) {
     if (staff) staff.oneTimePassword = null;
   });
   revalidatePath("/panel/team");
+}
+
+/**
+ * One identity document from the public booking form.
+ *
+ * DELIBERATELY UNAUTHENTICATED: the person uploading is a customer who has no
+ * account and never will. The protection is therefore on the content and not
+ * on the caller, and it all lives in lib/panel/uploads.ts: an 8MB cap, and an
+ * allowlist checked against the file's magic numbers rather than the
+ * Content-Type the browser claims.
+ *
+ * Returns an id. Reading that id back requires a staff session, which is what
+ * keeps a write-only drop from becoming a public file host.
+ */
+export async function uploadBookingDocumentAction(
+  formData: FormData,
+): Promise<{ ok: true; document: UploadedDocument } | { ok: false; error: string }> {
+  const file = formData.get("file");
+  const slot = String(formData.get("slot") ?? "") as DocumentSlot;
+
+  if (!(file instanceof File)) {
+    return { ok: false, error: "No file was received. Try again." };
+  }
+
+  return saveDocument(file, slot);
 }

@@ -1,4 +1,5 @@
-import { CircleAlert, Trash2 } from "lucide-react";
+import { CircleAlert, FileText, Trash2 } from "lucide-react";
+import { slotLabels } from "@/lib/panel/uploads";
 import { requireStaff, canWrite } from "@/lib/panel/guard";
 import { readData } from "@/lib/panel/store";
 import { colomboDateTime } from "@/lib/panel/time";
@@ -59,8 +60,8 @@ export default async function PanelBookings({
 
       {data.bookings.length === 0 ? (
         <p className="bg-tile p-6 text-sm text-muted">
-          No bookings yet. One made through the website booking form or the
-          quick request on a vehicle page will appear here.
+          No bookings yet. One made through the website booking form, or
+          taken by phone, will appear here.
         </p>
       ) : null}
 
@@ -93,6 +94,12 @@ export default async function PanelBookings({
                     {booking.email ? ` · ${booking.email}` : ""}
                   </p>
 
+                  {booking.whatsapp ? (
+                    <p className="mt-1 text-sm text-muted">
+                      WhatsApp {booking.whatsapp}
+                    </p>
+                  ) : null}
+
                   <p className="mt-1 text-sm text-muted">
                     {nameFor(booking.carSlug)} · {booking.pickupDate} to{" "}
                     {booking.returnDate}
@@ -104,6 +111,30 @@ export default async function PanelBookings({
                       {booking.notes}
                     </p>
                   ) : null}
+
+                  {/* Identity documents. Links, not thumbnails: these are NIC
+                      and licence images, so they open only when a staff member
+                      asks for one rather than rendering on a shared screen. */}
+                  {booking.documents.length > 0 ? (
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      {booking.documents.map((document) => (
+                        <a
+                          key={document.id}
+                          href={`/api/panel/documents/${document.id}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-full bg-field px-3 py-1.5 text-xs font-semibold text-ink-soft transition-colors hover:bg-field-hover hover:text-ink"
+                        >
+                          <FileText className="size-3.5 text-brand-bright" aria-hidden />
+                          {slotLabels[document.slot]}
+                        </a>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="mt-3 text-xs text-muted">
+                      No identity documents on this booking.
+                    </p>
+                  )}
 
                   <p className="mt-2 text-xs text-muted">
                     Raised {colomboDateTime(booking.createdAt)} · handled by{" "}

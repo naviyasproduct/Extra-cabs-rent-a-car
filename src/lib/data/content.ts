@@ -210,37 +210,7 @@ export const bookingExtras: BookingExtra[] = [
     id: "extra-driver",
     label: "Professional driver",
     description: "One of our licensed drivers takes the wheel for the whole hire.",
-    pricePerDay: 6500,
-  },
-  {
-    id: "extra-child-seat",
-    label: "Child seat",
-    description: "Rear-facing or booster, fitted before handover.",
-    pricePerDay: 800,
-  },
-  {
-    id: "extra-gps",
-    label: "GPS navigation unit",
-    description: "Offline maps of the whole island, no data needed.",
-    pricePerDay: 500,
-  },
-  {
-    id: "extra-wifi",
-    label: "Portable WiFi router",
-    description: "Unlimited 4G for up to five devices.",
-    pricePerDay: 900,
-  },
-  {
-    id: "extra-full-cover",
-    label: "Zero-excess cover",
-    description: "Reduces your accident liability from LKR 25,000 to nil.",
-    pricePerDay: 1500,
-  },
-  {
-    id: "extra-delivery",
-    label: "Delivery and collection",
-    description: "Free inside Colombo, quoted by distance elsewhere.",
-    pricePerDay: 0,
+    pricePerDay: 5000,
   },
 ];
 

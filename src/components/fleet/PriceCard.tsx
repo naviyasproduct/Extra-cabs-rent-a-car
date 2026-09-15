@@ -91,28 +91,32 @@ export function PriceCard({ car }: { car: Car }) {
           {car.available ? "Book this vehicle" : "Currently on hire"}
           {car.available ? <ArrowRight className="size-4" aria-hidden /> : null}
         </Link>
-
-        <p className="mt-3 text-center text-sm text-muted">
-          No payment taken until we confirm availability.
-        </p>
       </div>
 
-      {/* Contact strip, same radius family so it reads as part of the card */}
-      <div className="mt-(--gap) grid grid-cols-2 gap-(--gap)">
+      {/* Contact strip. These are controls, so they take --color-field: on a
+         flat black page a button with no fill and no border is invisible, which
+         is what bg-surface (transparent) left them as. Pill shape and the
+         inverted icon badge are the same language as <Button arrow>, so they
+         read as the secondary pair under the primary CTA. */}
+      <div className="mt-(--gap) grid grid-cols-2 gap-3">
         <a
           href={`tel:${site.phone.replace(/\s/g, "")}`}
-          className="inline-flex h-13 items-center justify-center gap-2 rounded-(--radius-inner) bg-surface py-4 text-sm font-semibold transition-colors hover:bg-field"
+          className="group/contact inline-flex h-14 items-center justify-center gap-2.5 rounded-full bg-field pr-5 pl-2 text-sm font-semibold text-ink transition-colors duration-200 hover:bg-field-hover"
         >
-          <Phone className="size-4 text-brand-bright" aria-hidden />
+          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-brand text-white transition-colors duration-200 group-hover/contact:bg-brand-hover">
+            <Phone className="size-4" aria-hidden />
+          </span>
           Call
         </a>
         <a
           href={`https://wa.me/${site.whatsapp.replace(/[^0-9]/g, "")}`}
           target="_blank"
           rel="noreferrer"
-          className="inline-flex h-13 items-center justify-center gap-2 rounded-(--radius-inner) bg-surface py-4 text-sm font-semibold transition-colors hover:bg-field"
+          className="group/contact inline-flex h-14 items-center justify-center gap-2.5 rounded-full bg-field pr-5 pl-2 text-sm font-semibold text-ink transition-colors duration-200 hover:bg-field-hover"
         >
-          <MessageCircle className="size-4 text-brand-bright" aria-hidden />
+          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-brand text-white transition-colors duration-200 group-hover/contact:bg-brand-hover">
+            <MessageCircle className="size-4" aria-hidden />
+          </span>
           WhatsApp
         </a>
       </div>

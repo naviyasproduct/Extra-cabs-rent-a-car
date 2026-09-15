@@ -5,6 +5,8 @@
  * Supabase lands these become table rows; the shapes should not need to change.
  */
 
+import type { IdDocumentType, UploadedDocument } from "@/types/booking";
+
 export type Role = "owner" | "employee";
 
 export interface StaffUser {
@@ -139,7 +141,13 @@ export interface PanelBooking {
   reference: string;
   carSlug: string | null;
   customerName: string;
+  /** The number staff call. */
   phone: string;
+  /**
+   * The number staff message. The website asks for both and requires them to
+   * differ; a booking taken by phone in the panel may legitimately have none.
+   */
+  whatsapp: string;
   email: string;
   pickupLocation: string;
   pickupDate: string;
@@ -152,6 +160,15 @@ export interface PanelBooking {
   createdAt: string;
   handledBy: string | null;
   source: "website" | "panel";
+  /** Which identity document the customer chose to send. */
+  idType: IdDocumentType;
+  /**
+   * Identity documents, metadata only. The bytes live in .data/uploads via
+   * lib/panel/uploads.ts and are served solely by /api/panel/documents/[id],
+   * which requires a staff session. Never put an image in this store: the
+   * whole JSON file is read and rewritten on every request.
+   */
+  documents: UploadedDocument[];
 }
 
 /* -------------------------------------------------------------------------- */

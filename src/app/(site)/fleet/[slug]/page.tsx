@@ -15,11 +15,11 @@ import {
 import { CarGallery } from "@/components/fleet/CarGallery";
 import { PriceCard } from "@/components/fleet/PriceCard";
 import { CarCard } from "@/components/fleet/CarCard";
-import { QuickRequest } from "@/components/fleet/QuickRequest";
 import { JsonLd } from "@/components/common/JsonLd";
 import { breadcrumbLd, carLd } from "@/lib/seo";
 import { formatPrice } from "@/lib/utils";
 import { AvailabilityDot, Badge, Rating } from "@/components/ui/Badge";
+import { LinkButton } from "@/components/ui/Button";
 import { Grid, Section, SectionHeader, Shell } from "@/components/ui/Layout";
 import { categoryLabels } from "@/lib/data/cars";
 import { publicCarBySlug, publicCarSlugs, publicRelatedCars } from "@/lib/fleet";
@@ -160,11 +160,22 @@ export default async function CarDetailPage({
       <Section band="paper" spacing="default">
         <Shell>
           <Grid className="items-start">
+            {/* The gallery is its own grid item so the booking card can follow it
+               directly when the grid collapses to one column. */}
             <div className="col-span-4 md:col-span-8 lg:col-span-8">
               <CarGallery images={car.images} name={car.name} badge={car.badge} />
+            </div>
 
+            {/* Booking card. Second in the DOM, so on phones and tablets it sits
+               under the images rather than below the whole description. On lg it
+               spans both rows, which keeps it beside the content as before. */}
+            <div className="col-span-4 md:col-span-8 lg:col-span-4 lg:row-span-2">
+              <PriceCard car={car} />
+            </div>
+
+            <div className="col-span-4 md:col-span-8 lg:col-span-8">
               {/* Specs */}
-              <div className="mt-(--gap) rounded-(--radius-card) bg-surface p-6 lg:p-8">
+              <div className="rounded-(--radius-card) bg-surface p-6 lg:p-8">
                 <h2 className="font-display text-xl font-bold uppercase">
                   Specifications
                 </h2>
@@ -242,13 +253,19 @@ export default async function CarDetailPage({
                 </div>
               </div>
 
-              {/* Ask for this vehicle without leaving the page */}
-              <QuickRequest car={car} />
-            </div>
-
-            {/* Booking card */}
-            <div className="col-span-4 mt-(--gap) md:col-span-8 lg:col-span-4 lg:mt-0">
-              <PriceCard car={car} />
+              {/* One way to book: the full booking form. No inline request. */}
+              {car.available ? (
+                <div className="mt-(--gap) flex justify-center">
+                  <LinkButton
+                    href={`/booking?car=${car.slug}`}
+                    variant="primary"
+                    size="lg"
+                    arrow
+                  >
+                    Book now
+                  </LinkButton>
+                </div>
+              ) : null}
             </div>
           </Grid>
         </Shell>

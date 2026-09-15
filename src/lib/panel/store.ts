@@ -144,6 +144,16 @@ let diskWritable = true;
  */
 function hydrate(data: PanelData): PanelData {
   data.messages ??= [];
+
+  // Bookings written before the two-number and document fields existed. The
+  // panel maps over booking.documents, so a missing array is a crash on the
+  // bookings screen, not a blank cell.
+  for (const booking of data.bookings) {
+    booking.whatsapp ??= "";
+    booking.idType ??= "nic";
+    booking.documents ??= [];
+  }
+
   for (const staff of data.staff) {
     staff.phone ??= "";
     staff.smsAlerts ??= true;

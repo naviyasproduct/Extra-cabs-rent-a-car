@@ -43,7 +43,7 @@ export function Footer() {
       <Shell className="mt-[calc(var(--overlap)*-1)] pb-10 pt-(--section-y)">
         <Grid>
           <div className="col-span-4 md:col-span-8 lg:col-span-4">
-            <Logo tone="light" />
+            <Logo variant="image" />
             <p className="mt-5 max-w-[38ch] text-[0.9375rem] leading-relaxed text-muted">
               {site.description}
             </p>
@@ -95,6 +95,46 @@ export function Footer() {
               </ul>
             </div>
           ))}
+        </Grid>
+
+        <div className="mt-12 h-px bg-line" />
+
+        {/* The office on a map. Its own row rather than a tile inside the
+            contact column: at lg the brand column is 4 of 12, and a map that
+            narrow shows a street name and nothing that helps anyone find the
+            place. */}
+        <Grid className="mt-10">
+          <div className="col-span-4 md:col-span-8 lg:col-span-3">
+            <h3 className="font-display text-sm font-semibold uppercase tracking-[0.16em] text-muted">
+              Find us
+            </h3>
+            <p className="mt-5 max-w-[26ch] text-[0.9375rem] leading-relaxed text-ink-soft">
+              {addressOneLine}
+            </p>
+            <p className="mt-3 text-[0.9375rem] text-muted">{site.hours.office}</p>
+            <a
+              href={site.mapLink}
+              target="_blank"
+              rel="noreferrer"
+              className="mt-5 inline-flex items-center gap-1 text-[0.9375rem] font-semibold text-brand-bright transition-colors hover:text-brand"
+            >
+              Open in Google Maps
+              <ArrowUpRight className="size-3.5" aria-hidden />
+            </a>
+          </div>
+
+          <div className="col-span-4 mt-7 md:col-span-8 lg:col-span-9 lg:mt-0">
+            <iframe
+              src={site.mapEmbed}
+              title={`${site.name} on Google Maps`}
+              // Below the fold on every page, and a third-party frame, so it
+              // must never be on the critical path.
+              loading="lazy"
+              referrerPolicy="strict-origin-when-cross-origin"
+              allowFullScreen
+              className="h-[260px] w-full border-0 md:h-[300px] lg:h-[340px]"
+            />
+          </div>
         </Grid>
 
         <div className="mt-12 h-px bg-line" />

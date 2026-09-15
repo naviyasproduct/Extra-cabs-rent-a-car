@@ -68,6 +68,23 @@ export const site = {
     opens: "08:00",
     closes: "20:00",
   },
+
+  /**
+   * The office on Google Maps. Two forms of the same place:
+   *
+   *   mapEmbed  the iframe src, shown in the footer. This is the URL Google
+   *             hands out under Share, Embed a map, and it carries its own
+   *             place id, so it survives the address text being reworded.
+   *   mapLink   where "Open in Google Maps" goes. Coordinates rather than a
+   *             place id, because a coordinate link opens in the handset app
+   *             on both platforms and never resolves to the wrong branch of a
+   *             similarly named business.
+   *
+   * If the pin is ever wrong, replace both together.
+   */
+  mapEmbed:
+    "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d11201.714037917482!2d79.97720745042868!3d6.961579915748608!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3ae2570041ddb17b%3A0x99b363437e3a3654!2sExtra%20Cabs%20%26%20Rent%20A!5e0!3m2!1sen!2slk!4v1789279796675!5m2!1sen!2slk",
+  mapLink: "https://www.google.com/maps/search/?api=1&query=6.9615799,79.9772074",
 } as const;
 
 /**

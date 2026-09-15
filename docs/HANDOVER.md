@@ -4,7 +4,7 @@
 without reading the whole codebase. If something here is wrong, fix it here
 rather than working around it.
 
-Last updated: **2026-09-11**
+Last updated: **2026-09-15**
 
 ---
 
@@ -135,6 +135,7 @@ src/
     home/ fleet/ booking/ common/
   lib/
     data/              cars.ts, services.ts, content.ts, site.ts  ← catalogue
+    contact.ts         phone + email validation. PURE, client-safe.
     fleet.ts           catalogue + panel overrides. Server only.
     panel/             store, auth, guard, time, window. Server only.
     utils/
@@ -143,9 +144,12 @@ src/
   app/(site)/          public pages + navbar/footer layout
   app/999p7k/          staff sign in
   app/panel/           the staff screens + actions.ts
-  app/api/panel/       heartbeat, away
+  app/api/panel/       heartbeat, away, documents/[id]
 public/images/         home/, cars/, icons/
 .data/panel.json       the store. Gitignored. Delete it to reset.
+.data/uploads/         customer NIC, passport and licence images. Gitignored.
+                       Served ONLY by /api/panel/documents/[id], which needs a
+                       staff session. Never put these under public/.
 ```
 
 ### The data accessors are the backend seam
@@ -1577,6 +1581,575 @@ the site now uses. Unchanged from the note in the previous entry.
 `nav-logo-v2.png` at 256w 1x and 384w 2x, and the **served WebP was decoded and
 compared against the source pixel counts** rather than trusted, which is the
 only reason the stale cache was caught at all. `tsc` clean, build passes.
+
+### 2026-09-13 - Booking extras cut to the driver, at LKR 5,000
+
+Client: on step 2 of the booking form, remove every extra except the
+professional driver, and the driver is LKR 5,000 a day, not 6,500.
+
+- `bookingExtras` in `src/lib/data/content.ts` is now a single entry,
+  `extra-driver`, at `pricePerDay: 5000`. Child seat, GPS unit, WiFi router,
+  zero-excess cover and delivery and collection are gone.
+- **No component changed.** `BookingForm` already maps over the array for the
+  tiles, the summary line and the extras total, so removing the data removed
+  the options everywhere at once. The `sm:grid-cols-2` grid renders the one
+  surviving tile at half width, which matches the tiles above it.
+- Confirmed nothing else referenced the removed ids: `grep` for
+  `extra-child-seat`, `extra-gps`, `extra-wifi`, `extra-full-cover` and
+  `extra-delivery` over `src/` returns nothing.
+- The `pricePerDay === 0` branch that printed "Free" is left in place. It has
+  no data behind it now, but it is the right behaviour if a free extra is ever
+  added back.
+
+> Note: `/terms` clause on insurance still says "Zero-excess cover can be added
+> for a daily charge", and the self-drive service copy still mentions extras.
+> Left alone because removing the booking option is not the same as withdrawing
+> the product, but say the word if zero-excess is no longer offered at all.
+
+**Verified:** `tsc` clean, build passes, 34 routes.
+
+### 2026-09-13 (later) - The footer carries the artwork, and a map
+
+Client: put the navbar logo in the footer too, and add the Google Maps embed
+of the office.
+
+**Logo.** `Footer.tsx` now renders `<Logo variant="image" />` in place of the
+`tone="light"` text lockup. No change to `Logo.tsx` itself: both forms were
+already there. The footer is **not** paying a second download for it, which was
+the thing worth checking: the navbar renders the same artwork at the same
+`h-9 lg:h-10`, so both emit the identical `w=256 1x, w=384 2x` srcset and the
+browser serves the footer copy from cache.
+
+> The full business name in text is now gone from the page. The artwork says
+> "EXTRA" and nothing else, and the text lockup was the only place
+> "Cabs & Rent a Cars" appeared as readable words rather than as a link label
+> or metadata. The legal name is still in the copyright line directly below,
+> which is why this was left as the client asked rather than queried.
+
+**Map.** Two new fields in `src/lib/data/site.ts`, so no URL is hardcoded in a
+component:
+
+- `site.mapEmbed` - the iframe src the client supplied, carrying the place id.
+- `site.mapLink` - where "Open in Google Maps" goes. **Coordinates**
+  (`6.9615799,79.9772074`, read out of the embed URL) rather than a place id,
+  because a coordinate link opens the handset map app on both platforms.
+
+It sits in its own row between the link columns and the copyright, as a
+three-column caption ("Find us", the address, office hours, the maps link)
+beside a nine-column map. **Not a tile in the contact column:** that column is
+4 of 12, and a map that narrow shows a street name and nothing that helps
+anyone find the place.
+
+- The supplied `width="600" height="450"` and inline `style` were dropped for
+  `h-[260px] w-full border-0 md:h-[300px] lg:h-[340px]`. A fixed 600px frame
+  overflows a 390px phone, and the design rules put sizing in classes.
+- `loading="lazy"` kept, and it matters: this is a third-party frame below the
+  fold on **every** page.
+- Added a `title`, which the supplied snippet had no attribute for. An iframe
+  with no accessible name is announced as "frame" and nothing else.
+
+**Verified** on a served production build, not assumed: the footer HTML carries
+the iframe with its lazy loading, referrer policy and title; the text lockup is
+gone (zero occurrences of its `textShadow` rule); the logo resolves to
+`nav-logo-v2.png` at 256w/384w; and "Find us" and "Open in Google Maps" render.
+`tsc` clean, build passes, 34 routes. No CSP headers are set in
+`next.config.ts`, so nothing blocks the frame.
+
+Still not seen in a real browser, as ever in this repo. The map is worth one
+look on a phone.
+
+### 2026-09-15 - The inline request form is gone from the vehicle page
+
+Client: remove the "Request this vehicle" section from vehicle pages and leave
+only a Book now button. No requests.
+
+**Removed**
+
+- `src/components/fleet/QuickRequest.tsx` **deleted**. It was the five-field
+  form under "What you need" on every vehicle page: pick-up and return dates,
+  name, mobile, the drive-yourself / with-a-driver toggle, a live price
+  estimate and its own "Request sent" confirmation panel. Only the vehicle page
+  used it.
+- Its import and usage in `src/app/(site)/fleet/[slug]/page.tsx`.
+
+**Added in its place**
+
+One `LinkButton` to `/booking?car=<slug>`, reading **Book now**, centred where
+the form was. It is wrapped in `car.available`, so a vehicle out on hire shows
+nothing there rather than a button that leads to a form for a car nobody can
+have. The sidebar `PriceCard` already handles that case in its own words
+("Currently on hire"), so the page still says what is going on.
+
+**What was deliberately NOT removed, and why**
+
+The instruction included "if we add a admin page to receive requests remove it
+also". There is no such page. `/panel/bookings` is not a request inbox that
+came with this form: it is the panel's booking desk, it existed first, and it
+is where the **full booking form at `/booking`** lands, which is exactly where
+the new Book now button sends people. It also drives public availability
+(confirming or starting a hire takes a vehicle off the public list), records
+payments, and is what the Text.lk SMS alert points staff at. Deleting it would
+break the flow the client asked to keep, so the quick request was removed as a
+**source** feeding that desk while the desk stays.
+
+`createBookingAction` stays for the same reason: `BookingForm` is its other
+caller. Nothing in `src/lib/` or `src/app/panel/` existed solely for the quick
+request, so there was nothing else to clear.
+
+**Copy that referenced it, now corrected**
+
+`/panel/bookings` empty state said bookings arrive "through the website booking
+form or the quick request on a vehicle page". It now says the booking form or
+taken by phone, which is what the two `source` values actually are.
+
+> Left alone, flag it if wanted: the full form at `/booking` still says
+> "Confirm request" on its last step and "Request received" on its confirmation.
+> That is the booking flow's own wording, not the deleted section, and changing
+> it was not part of this ask.
+
+**Verified**
+
+- `tsc` clean, build passes, 34 routes.
+- Served on :3121 and read the real HTML of `/fleet/toyota-prius`, not the
+  source: **zero** occurrences of "Request this vehicle", "No payment now",
+  "Send request" and the `qr-*` field ids. Exactly one Book now in the page
+  body pointing at `/booking?car=toyota-prius`, plus the navbar's own
+  pre-existing one at `/booking`; the third match was the same element inside
+  the RSC flight payload, not a second button. `PriceCard` still renders "Book
+  this vehicle". `/fleet` and `/booking?car=toyota-prius` return 200 and
+  `/panel/bookings` still redirects a signed-out visitor (307). Server stopped.
+- Zero em or en dashes in `src/`.
+
+**Not seen in a real browser**, as ever in this repo. The main column now ends
+on a centred button instead of a bordered form, so the spacing below "What you
+need" is worth one look.
+
+### 2026-09-15 (later) - Booking card under the images on mobile, contact buttons rebuilt
+
+Client: on mobile the booking card must sit **under the images**, not under the
+description. And make the Call and WhatsApp buttons look like buttons.
+
+**The reorder is a grid change, not a duplicate card**
+
+`/fleet/[slug]` was two grid items: everything in a `lg:col-span-8` column, and
+the `PriceCard` in a `lg:col-span-4` one. Below `lg` the grid collapses to a
+single column, so the card landed after the gallery **and** the specs, the
+description, the features and both list panels. On a phone that is a long way
+down.
+
+Now three items, in DOM order: gallery, `PriceCard`, then the rest of the
+content. The card is second in the document, so the collapsed single-column
+order is gallery, card, content, with nothing conditional and no second copy of
+the card to keep in sync.
+
+- **`lg:row-span-2` is what keeps the desktop unchanged.** At `lg` the gallery
+  takes row 1 of columns 1 to 8 and the content takes row 2, so without a row
+  span the card would occupy only row 1 and the area beside the content would
+  be empty. Spanning both rows puts it back exactly where it was.
+- The specs panel lost its leading `mt-(--gap)`. It is the first child of its
+  own grid item now, and the grid's own `gap` already separates the rows, so
+  keeping it would have doubled the space on every breakpoint.
+- The old wrapper's `mt-(--gap) lg:mt-0` went for the same reason: the grid gap
+  handles it, at every width.
+
+> **Not changed, worth knowing.** `PriceCard`'s inner div carries
+> `lg:sticky lg:top-28`, but the Grid is `items-start`, so the card's grid item
+> shrinks to the card's own height and a sticky child has nowhere to travel.
+> **The sticky has never done anything**, before this change or after it.
+> `lg:self-stretch` on the wrapper would switch it on. Left alone because the
+> ask was about mobile order and turning it on is a visible desktop change
+> nobody requested.
+
+**The contact buttons were invisible, which is why they did not read as buttons**
+
+They carried `bg-surface`, and `--color-surface` is **`transparent`** since the
+flat redesign. So "Call" and "WhatsApp" were bare text with a red glyph and no
+button shape at all: a fill only appeared on hover, which a touch screen never
+does. This is the exact case the design rules in section 5 call out, that a
+control with no background and no border is invisible.
+
+Rebuilt with the existing vocabulary rather than a new one:
+
+- `bg-field` resting, `hover:bg-field-hover`. The **controls** token, which is
+  what these are, not `bg-surface`.
+- `rounded-full` and `h-14`, matching the "Book this vehicle" CTA directly
+  above, so the three read as one primary and a secondary pair.
+- The icon sits in a filled `bg-brand` circle that deepens to `bg-brand-hover`
+  on hover. That is the same inverted-badge idea as `<Button arrow>`, so it is
+  a pattern the site already uses rather than a one-off.
+- Grid gap tightened from `gap-(--gap)` to `gap-3`: the two belong to each
+  other, and a full section gap between them read as two unrelated links.
+
+> **No WhatsApp green.** It is the obvious idea and it breaks the palette rule
+> in section 5, which puts every colour on the site in the logo's family. The
+> icon is brand red like every other icon.
+
+**Verified**
+
+- `tsc` clean, build passes, 34 routes.
+- Served on :3122 and measured **DOM order in the rendered markup**, with the
+  RSC flight payload sliced off first so nothing was counted twice. Character
+  offsets: gallery image 17563, the Daily/Weekly/Monthly switch 22642, "Book
+  this vehicle" 23894, Call 25219, WhatsApp 26038, **Specifications 26233**,
+  "About this vehicle" 31040. The whole card sits between the images and the
+  first block of copy, which is the ask.
+- The in-page "Book now" is at 38634, after "What you need". The match at 8969
+  is the navbar's own.
+- Read the **shipped stylesheet**, because a Tailwind utility that fails to
+  emit fails silently: `.lg\:row-span-2{grid-row:span 2/span 2}` is present and
+  sits inside `@media (min-width:64rem)`, and both
+  `.hover\:bg-field-hover:hover` and
+  `.group-hover\/contact\:bg-brand-hover` are emitted.
+- `tel:+94771234567` and `https://wa.me/94771234567` both render correctly.
+  Server stopped.
+
+> **The escape trap from the 2026-09-08 entry bit again, and was caught.**
+> Writing `\s` through a Node script's string literal landed in the file as
+> `replace(/s/g, "")`, which strips the letter s instead of whitespace. It is
+> invisible on the current placeholder number (no s in it) and `tsc` cannot see
+> it, so only reading the written line caught it. Fixed with `String.raw`.
+> **Check any regex you write through a script by reading it back.**
+
+Still not seen in a real browser. The reorder is worth one look on a phone.
+
+### 2026-09-15 (then) - The payment reassurance line is off the price card
+
+Client: remove "No payment taken until we confirm availability." It sat under
+the "Book this vehicle" button in `PriceCard`, so it was on every vehicle page.
+
+- Deleted the `<p>` and its `mt-3`. The button now ends the card body and the
+  contact pair follows on the card's own `mt-(--gap)`, so no spacing was left
+  hanging.
+
+> **The same sentence is still the meta description on `/booking`**
+> (`src/app/(site)/booking/page.tsx`). Left alone deliberately: it is a search
+> result and link preview string, not copy anyone reads on the page, and it was
+> not what was pointed at. Say the word if it should go there too, in which case
+> the sentence leaves the codebase entirely.
+
+**Verified** on a served production build: zero occurrences of "No payment
+taken" across the Prius, Prado and Leaf pages, while each still renders "Book
+this vehicle", the Call and WhatsApp buttons and the deposit row, so only the
+line went. `tsc` clean, build passes, 34 routes. Server stopped.
+
+### 2026-09-15 (evening) - Two numbers, and identity documents as uploads
+
+Client, on the booking form: take **two mobile numbers**, one WhatsApp and one
+ordinary number, and they must be different. Replace the NIC and licence
+**number** boxes with **image uploads**, with the customer choosing whether they
+are sending an NIC or a passport. Take the driving licence too. NIC and licence
+are cards, so **front and back are separate uploads**. None of it optional: no
+uploads, no continuing. And remove the "Optional now" hints.
+
+**The shape of it**
+
+| Chose | Must upload |
+| --- | --- |
+| National Identity Card | NIC front, NIC back, licence front, licence back |
+| Passport | Passport photo page, licence front, licence back |
+
+`requiredSlots()` in `src/types/booking.ts` is the single definition of that
+table. The form's gate, the count in "2 more documents to upload" and the list
+submitted to the panel all read it, so they cannot drift apart.
+
+> **The passport is one image, not two.** The instruction said front and back
+> for "those nic licens both", and a passport is a booklet whose photo page is
+> the only face that carries anything. Say the word if the visa or entry stamp
+> page is wanted as well; it is one more entry in that table.
+
+**Where the bytes go, and why not in the JSON store**
+
+New module, `src/lib/panel/uploads.ts`. Files are written to **`.data/uploads/`**
+(already covered by the `.data/` line in `.gitignore`) and only the metadata
+goes on the booking. **Images must never go into `panel.json`**: the whole file
+is read and rewritten on every request, so four photographs per booking would
+make every panel page slower for the life of the store. There is a comment
+saying so on the field.
+
+Same read-only-filesystem fallback as `store.ts`, so a Vercel preview still
+works and just forgets on redeploy.
+
+**These are the most sensitive records the system holds**, which the PDPA note
+in section 7d already flagged. So:
+
+- nothing is ever written under `public/`, and there is no static path to it,
+- reading one goes through **`/api/panel/documents/[id]`**, which requires a
+  signed-in staff session and returns **404, not 401**, to a stranger: whether
+  an id exists is itself information,
+- the id is 32 random hex characters, so a URL cannot be guessed or walked, and
+  `readDocument()` refuses anything that is not exactly 32 hex characters
+  **before** the id is joined to a path,
+- the response carries `Cache-Control: private, no-store` and `nosniff`.
+
+**The upload action is deliberately unauthenticated**, because the person
+uploading is a customer who has no account and never will. The protection is
+therefore on the content, not the caller: an 8MB cap, and an allowlist checked
+against the file's **magic numbers** rather than the `Content-Type` the browser
+claims. A shell script named `evil.jpg` is refused. **SVG is refused on purpose**
+even though it is an image: it can carry script, and these are served back to
+staff from our own origin.
+
+> ### A bug caught before it shipped, and it would have broken every upload
+>
+> **Next caps server action request bodies at 1MB by default.** The upload goes
+> through a server action, and a phone photograph of an NIC is routinely 2 to
+> 5MB, so **every real upload would have failed** with an error the customer
+> could do nothing about, and the 8MB check would never have run.
+>
+> `next.config.ts` now sets `experimental.serverActions.bodySizeLimit: "10mb"`,
+> which leaves room above the 8MB cap for what `multipart/form-data` adds in
+> boundaries and part headers. The real limit stays the one in `uploads.ts`,
+> which refuses the file with a sentence explaining why.
+>
+> Proved against the running server rather than assumed: a 2MB and a 9MB body
+> return 200, a 12MB body is refused. Under the default the 2MB would have
+> failed.
+
+**Uploading happens on pick, not on submit**
+
+Each file goes up the moment it is chosen. These are phone photographs over a
+Sri Lankan mobile connection: holding four to send in one request at the end
+means a long silent wait and one failure that loses all four. This way each is
+its own small transfer with its own error message, and the Continue button is
+simply gated on what has already landed.
+
+`DocumentUpload.tsx` shows a local `blob:` preview so the customer can see they
+picked the right side of the card. It is revoked on replace and on unmount,
+because an object URL is a live handle into browser memory. The file input is
+cleared after every pick, or choosing the **same** file again fires no change
+event and the retry looks broken.
+
+**Two numbers means two numbers**
+
+`phone` is the number staff call, `whatsapp` the one they message. They are
+compared on **digits only**, after dropping a leading zero and a leading 94, so
+`077 123 4567` and `+94771234567` are correctly seen as the same number and
+refused. Switching between NIC and passport **keeps** the uploads already made,
+so tapping the wrong chip and tapping back does not lose files; only the
+required set is submitted.
+
+**Panel and data model**
+
+- `PanelBooking` gains `whatsapp`, `idType` and `documents`.
+- `/panel/bookings` shows the WhatsApp number and the documents as **links, not
+  thumbnails**: NIC and licence images should open when a staff member asks for
+  one, not render unbidden on a screen someone else can see.
+- **`hydrate()` fills all three on read.** The bookings screen maps over
+  `booking.documents`, so a store written last week would have crashed it, not
+  shown a blank cell. Seven existing bookings in the dev store are covered.
+- `slotLabels` is duplicated in `BookingForm.tsx` rather than imported from
+  `uploads.ts`, because that module reaches for `node:fs` and importing it into
+  a client component would drag the filesystem into the browser bundle. Same
+  reason `cars.ts` stays pure.
+
+**Proven, not assumed.** 43 checks against the real modules, run with
+`node --experimental-strip-types` and the resolver hook from the 2026-09-11
+entry. The script snapshotted `.data/` and restored it in a `finally`, and the
+last two assertions are that the store and the upload directory came back as
+they were found. Covered: both required-slot tables; real JPEG, PNG, WEBP and
+PDF accepted; **a shell script, an HTML file, a Windows executable and an SVG
+all refused despite claiming an image Content-Type**; oversized and empty files
+refused; an unknown slot refused; bytes round-tripping unchanged; and
+`readDocument` returning null for `../../panel`, `../../../etc/passwd`, a short
+id, a non-hex id and an empty id. Plus: no upload id appears anywhere under
+`public/`, and `hydrate()` gives a legacy booking row written without the new
+fields an empty documents array rather than an undefined one.
+
+**Verified over HTTP** on a served production build, which is the only way to
+prove the wall is real: the document route returns **404 with no cookie, 404
+with a forged cookie signature, and 200 with the correct bytes and
+`image/jpeg`** for a real session minted from the app's own
+`createSessionValue()`. Unknown ids and a URL-encoded traversal both 404. The
+response carries `private, no-store` and `nosniff`.
+
+The form itself **cannot be read out of the SSR HTML** (it uses
+`useSearchParams`, so its subtree is client rendered and the server sends only
+the Suspense fallback, as the 2026-09-06 entry records). It was checked in the
+**shipped client chunk** instead: "WhatsApp number", "We call this one", "We
+message this one", "National Identity Card", "Passport photo page", "Driving
+licence, back", "Choose a photo", "Give two different numbers" and "more
+documents to upload" are all present, and **"Optional now" and "licenceNumber"
+are absent** from the bundle entirely.
+
+`tsc` clean, build passes. Test uploads deleted, dev store confirmed unchanged
+at 7 bookings, server stopped.
+
+**Still open, and worth deciding**
+
+- **Supabase Storage is the real destination.** `.data/uploads/` is the same
+  scaffold as `panel.json`: on Vercel it falls back to memory and forgets on
+  redeploy. The ids become object keys and nothing else has to change.
+- **Nothing deletes these images, ever.** Holding a customer's NIC and licence
+  indefinitely is the part of this most likely to matter under the PDPA. A
+  retention rule (delete N days after the hire returns) needs the owner's
+  decision and belongs with the section 7d legal review. `/privacy` still does
+  not mention that we collect identity documents at all.
+- The upload endpoint is public by necessity. It is capped and content-checked,
+  but there is **no rate limit**, and there cannot be a good one before there is
+  a real backend in front of it.
+
+### 2026-09-15 (night) - Real validation on the two numbers and the email
+
+Client: the two phone fields should be number fields that bring up the **number
+pad on a phone, not the keyboard**, the customer must not be able to type
+letters into them, and the email should be checked as a real address.
+
+**One definition of a usable number, shared by both sides**
+
+`toMsisdn` and `displayMsisdn` already existed, but in `lib/sms/textlk.ts`,
+which is **server only because it holds the API token**. The form could not
+import them, and writing a second phone parser for the browser would have meant
+two definitions of "valid" drifting apart, with the failure showing up as a
+booking staff cannot text.
+
+So the parsing moved to the new **`src/lib/contact.ts`**, which is pure and
+client-safe: no node built-ins, no secrets, no data imports. `textlk.ts`
+**re-exports** the two functions, so not one call site changed.
+
+**What counts as a number**
+
+| Typed | Result |
+| --- | --- |
+| `0771234567`, `077 123 4567`, `077-123-4567`, `(077) 123 4567` | accepted |
+| `+94 77 123 4567`, `94771234567`, `771234567` | accepted, same number |
+| `0112345678` (Colombo landline) | accepted to **call**, refused for WhatsApp |
+| `+44 7700 900123` and other foreign numbers | accepted |
+| `077abc4567`, `12`, `0001234567` | refused, with the reason |
+
+> **Visitors were nearly locked out, and this is the part worth remembering.**
+> The obvious implementation validates against Sri Lankan numbers only. But step
+> 3 offers a **passport** precisely because people fly in and hire a car, and
+> their WhatsApp is a foreign number. A Sri-Lanka-only rule would have refused
+> exactly the customers the passport option exists for. Anything written in full
+> international form with a leading plus is accepted at 8 to 15 digits, which is
+> E.164.
+
+> **A landline is refused for WhatsApp only.** It parses fine and can be rung,
+> but it can never receive a WhatsApp message. The national part starting with 7
+> is what separates an 07X mobile from an 011 landline.
+
+**Letters cannot be typed at all**
+
+`sanitisePhoneInput()` runs on every keystroke and keeps only digits, spaces,
+brackets, dots, hyphens and a single **leading** plus. This is belt and braces
+with `inputMode`: a phone shows the dialpad, but a desktop keyboard will type
+whatever it likes and `type="tel"` does not stop it.
+
+> **On the number pad.** The fields are `type="tel"` with `inputMode="tel"`,
+> which is what raises the telephone dialpad rather than the alphabetic
+> keyboard. `inputMode="numeric"` would give a bare digits pad, but it **drops
+> the plus key**, and without a plus a visitor cannot type their own number. The
+> dialpad is the correct control here, not a compromise.
+
+**Email is checked properly, and honestly**
+
+`checkEmail()` rejects what is definitely not deliverable: no @, two @, spaces,
+a domain with no dot, a TLD that is not at least two letters, leading, trailing
+or doubled dots, and a hyphen at either end of any domain label. It is
+deliberately **not** one of the giant RFC 5322 regexes, which accept quoted
+local parts and bracketed IP addresses no customer will ever type and which
+nobody can read well enough to say what they allow.
+
+> Nothing short of sending to an address proves it exists, and this does not
+> pretend otherwise. If a genuinely verified address is ever needed, that is a
+> confirmation email with a link, which is a different piece of work.
+
+**Errors appear when they are useful**
+
+A message shows once a field has been **left**, or once Continue has been
+pressed, not while a box is still empty and untouched. Every message is the
+reason rather than "invalid": "Numbers only, no letters", "That is a landline.
+WhatsApp needs a mobile number", "The part after the @ needs a dot, like
+gmail.com". Each is a `role="alert"` tied to its input by `aria-describedby`,
+with `aria-invalid` on the field.
+
+`goNext()` now re-checks and reveals the errors rather than doing nothing: the
+Continue button is disabled, but it is still reachable by keyboard and the gate
+has to hold on its own.
+
+**Proven, not assumed.** 82 checks against the real module, run the same way as
+the other data-layer work. Covered: eight ways of writing one Sri Lankan number
+all reaching `+94771234567`; twelve rubbish inputs refused; letters and
+too-short numbers each getting their own message; four foreign numbers accepted
+and classified international; a landline accepted to call and refused for
+WhatsApp; the duplicate check catching the same number written local, spaced,
+and in bare national form while two genuinely different numbers pass; the typing
+filter stripping letters, emoji and a pasted "Mobile: " label, keeping one
+leading plus and dropping a plus in the middle; six valid addresses accepted and
+nineteen invalid ones refused; and `toMsisdn`/`displayMsisdn` behaving exactly
+as before, so the staff SMS path is untouched.
+
+> **One real bug, caught by the tests rather than by reading.** `user@bad-.com`
+> was being accepted. The hyphen check ran against the whole domain, which does
+> not start or end with one, instead of against each **label**, where `bad-`
+> does. Fixed and re-run.
+
+> **The escape trap bit for the third session running.** The `pattern` attribute
+> was written through a script as `\\s` and landed in the JSX as a literal
+> backslash-then-s, which as a regex means something else entirely and would
+> have silently mis-validated. The fix was to stop escaping: the class is now
+> `[0-9+() .-]*` with a real space. **Prefer a literal to an escape whenever the
+> string has to survive a script.**
+
+**Verified** in the shipped client bundle, since the form is client rendered
+behind Suspense and never appears in the SSR HTML: `type:"tel"`,
+`inputMode:"tel"`, `pattern:"[0-9+() .-]*"` and every one of the new messages
+are present. `tsc` clean, build passes.
+
+### 2026-09-15 (late) - Cartoon arrows between the booking steps
+
+Client: put curved arrows between the four steps, alternating up and down, drawn
+cartoonish with a big end.
+
+**`StepArrow` in `BookingForm.tsx`.** One inline SVG path, and the downward one
+is the **same path flipped on the Y axis** (`translate(0,32) scale(1,-1)`), so
+the two can never drift apart into slightly different drawings.
+
+- It is a **filled outline, not a stroked line.** A stroke cannot taper, and the
+  cartoon look is exactly a taper: a thin tail swelling into a big swept head.
+  That is a shape, not a line width.
+- A 1.6 stroke in the same colour as the fill rounds every corner off. Without
+  it the barbs come to hard points and it reads spiky rather than friendly.
+- `w-8 sm:w-11` (32px, 44px). Both sizes were **rendered and looked at**, not
+  guessed: below about 28px the tapered tail thins out to nothing and only the
+  head survives.
+
+**The arrows carry progress, not just decoration.** A hop the customer has
+already made is `text-brand-bright`; one they have not reached is
+`text-muted/50`. So the row reads as a route with distance covered, which is
+what a stepper is for. Alternation is `index % 2 === 0`, giving up, down, up.
+
+**Markup.** The arrows are `<li aria-hidden>` between the step `<li>`s, not
+loose `<div>`s: only `<li>` is valid as a child of `<ol>`, and the list already
+tells a screen reader the order, so the drawing adds nothing to the
+accessibility tree. Each iteration now returns two siblings, hence the
+`Fragment`. The step buttons keep `flex-1` and the arrows are `shrink-0`, so the
+arrows take their fixed width and the four buttons still divide what is left
+equally.
+
+> On a phone the labels are already hidden, so the row is four numbers and three
+> 32px arrows. At 390px that leaves about 59px per button, which a numeral fits
+> in comfortably.
+
+**Verified**
+
+- `tsc` clean, build passes.
+- The shape was **drawn and inspected at real size** before it went in: three
+  candidate paths rendered with sharp on the page's own black at 28, 36 and 44
+  pixels, then the winner mocked up as the **whole step track** at 760px with
+  labels and at 358px without, on step 1 and on step 3. The alternation, the
+  brand-to-muted split and the button widths were checked in the picture rather
+  than reasoned about.
+- The shipped client chunk carries the path, the flip transform and the size
+  classes.
+- Read the **shipped stylesheet**, since a Tailwind utility that fails to emit
+  fails silently: `.text-muted\/50{color:#828d9f80}` resolved its opacity
+  modifier to a real value, and `.sm\:w-11` is emitted **inside**
+  `@media (min-width:40rem)` rather than loose at the top level.
+- The preview script was written at the repo root (it needs the `sharp` in
+  `node_modules`) and **deleted afterwards**. It is not in the tree.
+
+Still not seen in a real browser, as ever in this repo.
 
 ---
 

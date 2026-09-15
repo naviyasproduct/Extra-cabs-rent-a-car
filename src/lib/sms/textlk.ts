@@ -38,33 +38,14 @@ export function smsConfig() {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Anything a person might type, to the 94XXXXXXXXX form Text.lk wants.
+ * Phone parsing lives in lib/contact.ts so the booking form can validate with
+ * the SAME definition of a usable number that this module formats with. That
+ * file is pure and client-safe; this one holds the API token and must never
+ * reach the browser.
  *
- * Accepts "+94 77 123 4567", "077 123 4567", "0771234567", "94771234567".
- * Returns null for anything that is not a plausible Sri Lankan number, and the
- * caller drops that recipient rather than sending into the void.
+ * Re-exported rather than relocated, so every existing import still resolves.
  */
-export function toMsisdn(raw: string): string | null {
-  const digits = String(raw ?? "").replace(/\D/g, "");
-  if (digits.length === 0) return null;
-
-  let national: string;
-  if (digits.startsWith("94")) national = digits.slice(2);
-  else if (digits.startsWith("0")) national = digits.slice(1);
-  else national = digits;
-
-  // Sri Lankan subscriber numbers are nine digits after the country code, and
-  // the leading zero of the national form is not one of them.
-  if (!/^[1-9]\d{8}$/.test(national)) return null;
-  return `94${national}`;
-}
-
-/** The same number in the form a Sri Lankan reads on screen: 077 123 4567. */
-export function displayMsisdn(msisdn: string): string {
-  const national = msisdn.startsWith("94") ? msisdn.slice(2) : msisdn;
-  if (national.length !== 9) return msisdn;
-  return `0${national.slice(0, 2)} ${national.slice(2, 5)} ${national.slice(5)}`;
-}
+export { toMsisdn, displayMsisdn } from "@/lib/contact";
 
 /* -------------------------------------------------------------------------- */
 /* Message length                                                              */
