@@ -28,6 +28,7 @@ import type {
 } from "@/types";
 import { requiredSlots } from "@/types";
 import { cn, daysBetween, formatPrice, isoDaysFromNow, todayIso } from "@/lib/utils";
+import { rateForDays, tierForDays } from "@/lib/pricing";
 import {
   checkEmail,
   checkPhone,
@@ -201,12 +202,16 @@ export function BookingForm({ cars }: { cars: Car[] }) {
   const days = daysBetween(draft.pickupDate, draft.returnDate);
 
   const totals = useMemo(() => {
-    const vehicle = selectedCar ? selectedCar.pricing.daily * days : 0;
+    // A week or longer is charged at that length's rate from the vehicle's
+    // rate table, which is what the vehicle page promises.
+    const rate = selectedCar ? rateForDays(selectedCar.pricing, days) : 0;
+    const vehicle = rate * days;
     const extrasTotal = draft.extras.reduce((sum, id) => {
       const extra = extras.find((item) => item.id === id);
       return sum + (extra ? extra.pricePerDay * days : 0);
     }, 0);
     return {
+      rate,
       vehicle,
       extras: extrasTotal,
       total: vehicle + extrasTotal,
@@ -891,6 +896,14 @@ export function BookingForm({ cars }: { cars: Car[] }) {
                   {days} {days === 1 ? "day" : "days"}
                 </dd>
               </div>
+              {selectedCar ? (
+                <div className="flex items-baseline justify-between gap-4">
+                  <dt className="text-muted">
+                    Rate{tierForDays(days) ? `, ${tierForDays(days)!.label} price` : ""}
+                  </dt>
+                  <dd className="font-semibold">{formatPrice(totals.rate)} / day</dd>
+                </div>
+              ) : null}
               <div className="flex items-baseline justify-between gap-4">
                 <dt className="text-muted">Vehicle</dt>
                 <dd className="font-semibold">{formatPrice(totals.vehicle)}</dd>

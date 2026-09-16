@@ -20,7 +20,9 @@ import {
   fuelChoice,
   optionalRate,
   plainText,
+  tierRates,
 } from "@/lib/panel/vehicle-form";
+import { RATE_TIERS } from "@/lib/pricing";
 import type {
   BookingStatus,
   PanelBooking,
@@ -223,16 +225,18 @@ export async function updateVehicleAction(formData: FormData) {
     // to someone who may edit it, so there is no locked-form case to protect.
     hybrid: checkbox(formData.get("hybrid")),
     daily: num("daily", vehicle.car.pricing.daily),
-    weekly: num("weekly", vehicle.car.pricing.weekly),
-    monthly: num("monthly", vehicle.car.pricing.monthly),
     deposit: num("deposit", vehicle.car.pricing.deposit),
     featured: formData.get("featured") === "on",
   };
+  const tiers = tierRates(formData, next.daily, vehicle.car.pricing.tiers);
+
+  const changedTiers = RATE_TIERS.filter(
+    (tier) => tiers[tier.id] !== vehicle.car.pricing.tiers[tier.id],
+  );
 
   const pricingChanged =
     next.daily !== vehicle.car.pricing.daily ||
-    next.weekly !== vehicle.car.pricing.weekly ||
-    next.monthly !== vehicle.car.pricing.monthly ||
+    changedTiers.length > 0 ||
     next.deposit !== vehicle.car.pricing.deposit;
 
   // Pricing has its own scope, so an employee given a photo window cannot
@@ -258,7 +262,7 @@ export async function updateVehicleAction(formData: FormData) {
   const before = vehicle.car;
   writeData((data) => {
     const current = data.vehicleOverrides[slug] ?? {};
-    data.vehicleOverrides[slug] = { ...current, ...next };
+    data.vehicleOverrides[slug] = { ...current, ...next, tiers };
   });
 
   const changes: string[] = [];
@@ -274,10 +278,10 @@ export async function updateVehicleAction(formData: FormData) {
     changes.push(next.hybrid ? "marked hybrid" : "no longer hybrid");
   if (next.daily !== before.pricing.daily)
     changes.push(`daily ${before.pricing.daily} to ${next.daily}`);
-  if (next.weekly !== before.pricing.weekly)
-    changes.push(`weekly ${before.pricing.weekly} to ${next.weekly}`);
-  if (next.monthly !== before.pricing.monthly)
-    changes.push(`monthly ${before.pricing.monthly} to ${next.monthly}`);
+  for (const tier of changedTiers)
+    changes.push(
+      `${tier.label} rate ${before.pricing.tiers[tier.id]} to ${tiers[tier.id]} a day`,
+    );
   if (next.deposit !== before.pricing.deposit)
     changes.push(`deposit ${before.pricing.deposit} to ${next.deposit}`);
   if (next.featured !== before.featured)
@@ -357,10 +361,9 @@ export async function createVehicleAction(formData: FormData) {
       hybrid: checkbox(formData.get("hybrid")),
       engineCc: clamp(num("engineCc", 1500), 0, 10000),
       daily,
-      // Left blank, the longer rates follow the daily one at the discounts the
-      // catalogue already uses, so a hurried add still produces sane pricing.
-      weekly: num("weekly", daily * 6),
-      monthly: num("monthly", daily * 24),
+      // Left blank, a long-hire rate is suggested from the daily one, so a
+      // hurried add still produces a complete rate table.
+      tiers: tierRates(formData, daily),
       deposit: num("deposit", 30000),
       withDriverDaily: optionalRate(formData.get("withDriverDaily")),
       images: [

@@ -4,7 +4,7 @@
 without reading the whole codebase. If something here is wrong, fix it here
 rather than working around it.
 
-Last updated: **2026-09-15**
+Last updated: **2026-09-17**
 
 ---
 
@@ -2150,6 +2150,79 @@ equally.
   `node_modules`) and **deleted afterwards**. It is not in the tree.
 
 Still not seen in a real browser, as ever in this repo.
+
+### 2026-09-17 - Long-hire rate table, set in the panel
+
+Client sent a competitor's vehicle page as the reference: a table of **1 week,
+2 weeks, 3 weeks, 1 month, 3 months, 6 months and over**, each with a per-day
+rate and a total. Staff set it when adding a vehicle; the table fills itself
+from the one day rate and every row can be overwritten.
+
+**Data model**
+
+- `CarPricing.weekly` and `.monthly` are **gone**, replaced by
+  `tiers: RateTiers`, a per-day rate for each of six durations. **Totals are
+  never stored.** They are always rate times days, so the two columns cannot
+  disagree.
+- The durations, their labels, day counts and suggested discounts live in
+  **`src/lib/pricing.ts`** (`RATE_TIERS`). Pure and client-safe; the panel
+  editor, the price card and the booking estimate all read it.
+- A month tier's total is **one month** (rate x 30) with "per month" under it,
+  as in the reference. A six month total is not a number anyone wants to read.
+- Suggested rates: 10, 15, 20, 30, 35 and 40% off daily, **rounded to the
+  nearest 50**, because that is how the agency quotes. The 12 catalogue
+  vehicles now carry literal tier blocks at exactly those suggestions.
+
+**Store migration.** `hydrate()` gives old rows tiers on read: a created
+vehicle's stored weekly or monthly figure becomes that tier's per-day rate
+(total / 7, total / 30), the rest are suggested from daily, and the legacy
+fields are deleted. An override gets only the two tiers it can speak for;
+`applyOverride()` merges tier by tier, so the rest fall through to the
+catalogue.
+
+**Panel.** `src/components/panel/RateEditor.tsx`, used by both the add and the
+edit form. Typing the one day rate refills every row marked **Auto**. A row
+typed into turns **Edited** and a later daily change leaves it alone, so a
+deliberate price is never overwritten silently. On the edit form a saved rate
+that differs from the suggestion starts as Edited. **Recalculate from the
+daily rate** hands every row back to the suggestion. Each row shows its
+discount off daily and its live total. The per-day rate is the editable value;
+the total is shown, not typed, because a typed total rarely divides into a
+whole daily rate.
+
+- Fields post as `daily` and `tier_<id>`. `tierRates()` in `vehicle-form.ts`
+  parses them: absent keeps the current rate (a locked fieldset posts
+  nothing), and blank, zero or junk takes the suggestion.
+- Any tier change needs the **pricing** window, like the daily rate did, and
+  the audit line names each tier: "1 week rate 10350 to 9900 a day".
+
+**Public site.** `PriceCard` lost its Daily/Weekly/Monthly switch and no longer
+needs to be a client component. It shows the daily rate, then the table.
+**The booking estimate now charges the tier rate**: `rateForDays()` picks the
+longest tier the hire qualifies for, and the summary gains a Rate row. Before
+this, the form charged daily x days whatever the length, which would have
+contradicted the table.
+
+**Proven, not assumed.** 43 checks against the real modules via
+`node --experimental-strip-types`, run with the **scratchpad as the working
+directory**, so the store it seeded and migrated was a throwaway and the real
+`.data/panel.json` hash was identical before and after. Covered: the
+reference's own figures (7000 x 7 = 49,000 through 4800 x 30 = 144,000);
+`rateForDays` at every boundary from 1 to 400 days; the parser on absent,
+blank, zero, negative, non-numeric and fractional input; migration of a
+created vehicle, a created vehicle with zero legacy rates, and a catalogue
+override; the partial override merging through `listVehicles()`; and the
+migration staying stable across a write and a re-read.
+
+**Verified on a served build** (:3123): the Prius page renders the table with
+its real figures (10,350 / 72,450 through 6,900 / 207,000 per month) and no
+period switch. As the owner, the add form has `daily` and all six `tier_*`
+inputs and no `weekly` or `monthly`; the Prius edit form is prefilled with
+11500 and its six rates, all marked Auto. `tsc` clean, build passes. Server
+stopped.
+
+Not seen in a real browser. The table sits in the 4 of 12 sidebar at `lg`,
+so the "Total" column is worth one look at 1024px.
 
 ---
 

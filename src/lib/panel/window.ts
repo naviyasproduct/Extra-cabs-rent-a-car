@@ -24,7 +24,7 @@ export const SCOPES: { id: WindowScope; label: string; description: string }[] =
   { id: "fleet.create", label: "Add a vehicle", description: "Put a new vehicle on the site" },
   { id: "fleet.update", label: "Edit a vehicle", description: "Change details on an existing vehicle" },
   { id: "fleet.delete", label: "Remove a vehicle", description: "Take a vehicle off the site" },
-  { id: "pricing.update", label: "Change pricing", description: "Daily, weekly, monthly rates or the deposit" },
+  { id: "pricing.update", label: "Change pricing", description: "The daily rate, the long-hire rate table or the deposit" },
   { id: "booking.delete", label: "Delete a booking", description: "Remove a booking record entirely" },
 ];
 

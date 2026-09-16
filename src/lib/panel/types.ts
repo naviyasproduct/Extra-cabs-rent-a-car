@@ -210,6 +210,17 @@ export interface Enquiry {
 export type PanelFuel = "petrol" | "diesel" | "electric";
 
 /**
+ * Per-day rate in LKR for each long-hire duration.
+ *
+ * Mirrors RateTiers in src/types/car.ts, spelled out for the same reason as
+ * PanelFuel. Totals are not stored: they are always rate times days.
+ */
+export type PanelRateTiers = Record<
+  "week1" | "week2" | "week3" | "month1" | "month3" | "month6",
+  number
+>;
+
+/**
  * Changes layered over the static fleet in src/lib/data/cars.ts.
  *
  * The catalogue file stays untouched so the panel never has to rewrite source
@@ -226,7 +237,11 @@ export interface VehicleOverride {
   available?: boolean;
   featured?: boolean;
   daily?: number;
+  /** Merged over the vehicle's own tiers, so a partial set is valid. */
+  tiers?: Partial<PanelRateTiers>;
+  /** Legacy. Migrated into `tiers` by hydrate() and then removed. */
   weekly?: number;
+  /** Legacy. Migrated into `tiers` by hydrate() and then removed. */
   monthly?: number;
   deposit?: number;
   withDriverDaily?: number | null;
@@ -262,8 +277,11 @@ export interface CreatedVehicle {
   hybrid: boolean;
   engineCc: number;
   daily: number;
-  weekly: number;
-  monthly: number;
+  tiers: PanelRateTiers;
+  /** Legacy. Migrated into `tiers` by hydrate() and then removed. */
+  weekly?: number;
+  /** Legacy. Migrated into `tiers` by hydrate() and then removed. */
+  monthly?: number;
   deposit: number;
   withDriverDaily: number | null;
   images: string[];

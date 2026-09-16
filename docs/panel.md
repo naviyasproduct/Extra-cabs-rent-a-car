@@ -207,9 +207,9 @@ are still static.
 - **Sessions are not revocable** beyond the 12 hour expiry, because there is no
   session table yet.
 - **Add sets everything; edit sets most of it.** The add form now covers every
-  field the vehicle page renders: the vehicle, all five rates, and the copy
+  field the vehicle page renders: the vehicle, the daily rate with its six-row long-hire table, the deposit, the with-driver rate, and the copy
   (tagline, "About this vehicle", "Features and equipment"). The edit form
-  covers name, seats, doors, fuel, the hybrid flag, the four rates, the
+  covers name, seats, doors, fuel, the hybrid flag, the daily rate, the long-hire table, the deposit, the
   home-page flag and all three copy fields. **Still not editable after
   creation:** brand, year, category, luggage, transmission, engine size and the
   with-driver rate. Those are set on create and then frozen, because

@@ -40,11 +40,17 @@ export type Transmission = "automatic" | "manual";
  */
 export type FuelType = "petrol" | "diesel" | "electric";
 
+/** The long-hire durations. Their labels and day counts are in lib/pricing.ts. */
+export type RateTierId = "week1" | "week2" | "week3" | "month1" | "month3" | "month6";
+
+/** Per-day rate in LKR for each duration. Totals are derived, never stored. */
+export type RateTiers = Record<RateTierId, number>;
+
 export interface CarPricing {
   /** All prices in LKR. */
   daily: number;
-  weekly: number;
-  monthly: number;
+  /** Per-day rates for longer hires, shown as the rate table. */
+  tiers: RateTiers;
   /** Refundable security deposit held during the rental. */
   deposit: number;
   /** Hourly rate with a driver, null when the car is self-drive only. */

@@ -5,6 +5,7 @@ import { staffVehicles } from "@/lib/fleet";
 import { openWindowFor, pendingRequestFor, SCOPES } from "@/lib/panel/window";
 import { formatPrice } from "@/lib/utils";
 import { MAX_VEHICLE_FEATURES } from "@/types";
+import { RateEditor } from "@/components/panel/RateEditor";
 import {
   createVehicleAction,
   deleteVehicleAction,
@@ -159,9 +160,10 @@ export default async function PanelFleet({
             </Group>
 
             <Group title="Rates in LKR">
-              <FormField label="Daily" name="daily" type="number" placeholder="9500" />
-              <FormField label="Weekly" name="weekly" type="number" placeholder="Blank: 6x daily" />
-              <FormField label="Monthly" name="monthly" type="number" placeholder="Blank: 24x daily" />
+              {/* The customer sees this table on the vehicle page. */}
+              <div className="sm:col-span-2 lg:col-span-4">
+                <RateEditor />
+              </div>
               <FormField label="Deposit" name="deposit" type="number" placeholder="30000" />
               <FormField
                 label="With a driver, per day"

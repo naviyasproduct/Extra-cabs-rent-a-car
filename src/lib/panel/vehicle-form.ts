@@ -1,5 +1,6 @@
 import { MAX_VEHICLE_FEATURES } from "@/types";
-import type { PanelFuel } from "@/lib/panel/types";
+import { RATE_TIERS, suggestedRate } from "@/lib/pricing";
+import type { PanelFuel, PanelRateTiers } from "@/lib/panel/types";
 
 /**
  * Turning what someone typed into a vehicle form into values the fleet can
@@ -78,4 +79,38 @@ export function optionalRate(raw: FormDataEntryValue | null): number | null {
   if (value === "") return null;
   const parsed = Number(value);
   return Number.isNaN(parsed) || parsed <= 0 ? null : Math.round(parsed);
+}
+
+/** The form field name for one tier's per-day rate. */
+export function tierField(id: string): string {
+  return `tier_${id}`;
+}
+
+/**
+ * The six long-hire rates from a vehicle form.
+ *
+ * Per tier: an absent field keeps `current` (a locked fieldset submits
+ * nothing), while a blank, zero or unreadable one takes the rate suggested
+ * from `daily`. So clearing a box is how the owner asks for the suggestion
+ * back, and a hurried add still produces a complete table.
+ */
+export function tierRates(
+  form: { get(name: string): FormDataEntryValue | null },
+  daily: number,
+  current?: PanelRateTiers,
+): PanelRateTiers {
+  const out = {} as PanelRateTiers;
+  for (const tier of RATE_TIERS) {
+    const raw = form.get(tierField(tier.id));
+    if (raw === null) {
+      out[tier.id] = current?.[tier.id] ?? suggestedRate(daily, tier);
+      continue;
+    }
+    const parsed = Number(String(raw).trim());
+    out[tier.id] =
+      String(raw).trim() === "" || Number.isNaN(parsed) || parsed <= 0
+        ? suggestedRate(daily, tier)
+        : Math.round(parsed);
+  }
+  return out;
 }

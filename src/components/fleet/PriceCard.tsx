@@ -1,61 +1,72 @@
-"use client";
-
-import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, MessageCircle, Phone } from "lucide-react";
 import type { Car } from "@/types";
 import { site } from "@/lib/data/site";
-import { cn, formatPrice } from "@/lib/utils";
-
-const periods = [
-  { id: "daily", label: "Daily", suffix: "per day", divisor: 1 },
-  { id: "weekly", label: "Weekly", suffix: "per week", divisor: 7 },
-  { id: "monthly", label: "Monthly", suffix: "per month", divisor: 30 },
-] as const;
-
-type PeriodId = (typeof periods)[number]["id"];
+import { RATE_TIERS, tierTotal } from "@/lib/pricing";
+import { cn, formatNumber, formatPrice } from "@/lib/utils";
 
 /**
- * Sticky booking card on the vehicle page. Prices are read straight from the
- * fleet data so a rate change in one place updates everywhere.
+ * Booking card on the vehicle page: the daily rate, then the long-hire rate
+ * table the staff set in the panel. Every figure is read from the fleet data,
+ * and each total is worked out from its per-day rate, so the two columns
+ * cannot disagree.
  */
 export function PriceCard({ car }: { car: Car }) {
-  const [period, setPeriod] = useState<PeriodId>("daily");
-
-  const amount = car.pricing[period];
-  const active = periods.find((item) => item.id === period)!;
-  const perDay = Math.round(amount / active.divisor);
-
   return (
     <div className="lg:sticky lg:top-28">
       <div className="p-6 lg:p-7">
-        {/* Period switch */}
-        <div className="flex gap-1 rounded-full bg-field p-1">
-          {periods.map((item) => (
-            <button
-              key={item.id}
-              type="button"
-              onClick={() => setPeriod(item.id)}
-              aria-pressed={period === item.id}
-              className={cn(
-                "flex-1 rounded-full py-2.5 text-sm font-semibold transition-colors duration-200",
-                period === item.id ? "bg-brand text-white" : "text-muted hover:text-ink",
-              )}
-            >
-              {item.label}
-            </button>
-          ))}
+        <div>
+          <p className="font-display text-4xl font-extrabold leading-none">
+            {formatPrice(car.pricing.daily)}
+          </p>
+          <p className="mt-2 text-sm text-muted">per day</p>
         </div>
 
-        <div className="mt-6">
-          <p className="font-display text-4xl font-extrabold leading-none">
-            {formatPrice(amount)}
-          </p>
-          <p className="mt-2 text-sm text-muted">
-            {active.suffix}
-            {period !== "daily" ? ` · works out at ${formatPrice(perDay)} a day` : ""}
-          </p>
-        </div>
+        {/* Longer hires */}
+        <table className="mt-6 w-full border-collapse text-sm">
+          <caption className="mb-3 text-left font-display text-sm font-bold uppercase tracking-[0.14em]">
+            Longer hires cost less
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col" className="border-b border-line pb-2 text-left text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+                Hire for
+              </th>
+              <th scope="col" className="border-b border-line pb-2 text-right text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+                Per day
+              </th>
+              <th scope="col" className="border-b border-line pb-2 text-right text-xs font-semibold uppercase tracking-[0.1em] text-muted">
+                Total
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {RATE_TIERS.map((tier) => {
+              const perDay = car.pricing.tiers[tier.id];
+              return (
+                <tr key={tier.id} className="border-b border-line">
+                  <th scope="row" className="py-2.5 pr-2 text-left align-top font-semibold">
+                    {tier.label}
+                  </th>
+                  <td className="py-2.5 pr-2 text-right align-top tabular-nums text-ink-soft">
+                    {formatNumber(perDay)}
+                  </td>
+                  <td className="py-2.5 text-right align-top tabular-nums">
+                    <span className="font-semibold">{formatNumber(tierTotal(perDay, tier))}</span>
+                    {tier.perMonth ? (
+                      <span className="block text-[0.6875rem] uppercase tracking-[0.08em] text-muted">
+                        per month
+                      </span>
+                    ) : null}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+        <p className="mt-3 text-xs text-muted">
+          All rates in LKR. A hire is charged at the rate for its length.
+        </p>
 
         <div className="mt-6 h-px bg-line" />
 

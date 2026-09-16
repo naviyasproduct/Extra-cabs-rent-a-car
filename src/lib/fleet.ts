@@ -50,8 +50,9 @@ function applyOverride(car: Car, override: VehicleOverride | undefined): Car {
     },
     pricing: {
       daily: override.daily ?? car.pricing.daily,
-      weekly: override.weekly ?? car.pricing.weekly,
-      monthly: override.monthly ?? car.pricing.monthly,
+      // Tier by tier, so an override that only knows some rates still
+      // inherits the rest from the catalogue.
+      tiers: { ...car.pricing.tiers, ...override.tiers },
       deposit: override.deposit ?? car.pricing.deposit,
       withDriverDaily:
         override.withDriverDaily !== undefined
@@ -83,8 +84,7 @@ function createdToCar(vehicle: CreatedVehicle): Car {
     },
     pricing: {
       daily: vehicle.daily,
-      weekly: vehicle.weekly,
-      monthly: vehicle.monthly,
+      tiers: vehicle.tiers,
       deposit: vehicle.deposit,
       withDriverDaily: vehicle.withDriverDaily,
     },

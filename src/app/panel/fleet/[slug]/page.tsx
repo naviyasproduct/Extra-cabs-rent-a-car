@@ -6,6 +6,7 @@ import { vehicleBySlug } from "@/lib/fleet";
 import { readData } from "@/lib/panel/store";
 import { colomboDateTime } from "@/lib/panel/time";
 import { MAX_VEHICLE_FEATURES } from "@/types";
+import { RateEditor } from "@/components/panel/RateEditor";
 import { updateVehicleAction } from "../../actions";
 
 export const dynamic = "force-dynamic";
@@ -92,10 +93,6 @@ export default async function PanelVehicle({
               options={["petrol", "diesel", "electric"]}
             />
 
-            <Field label="Daily rate LKR" name="daily" type="number" defaultValue={car.pricing.daily} />
-            <Field label="Weekly rate LKR" name="weekly" type="number" defaultValue={car.pricing.weekly} />
-            <Field label="Monthly rate LKR" name="monthly" type="number" defaultValue={car.pricing.monthly} />
-            <Field label="Deposit LKR" name="deposit" type="number" defaultValue={car.pricing.deposit} />
 
             <label className="flex items-center gap-2.5 self-end pb-2 text-sm">
               <input
@@ -116,6 +113,29 @@ export default async function PanelVehicle({
               />
               <span className="text-ink-soft">Show on the home page</span>
             </label>
+          </div>
+
+          {/* Rates. The table here is the table on the vehicle page. */}
+          <div>
+            <legend className="font-display text-xs font-bold uppercase tracking-[0.14em] text-muted">
+              Rates in LKR
+            </legend>
+            <div className="rule mt-2 mb-4" />
+
+            <div className="flex flex-col gap-4">
+              <RateEditor
+                initialDaily={car.pricing.daily}
+                initialTiers={car.pricing.tiers}
+              />
+              <div className="max-w-[16rem]">
+                <Field
+                  label="Deposit LKR"
+                  name="deposit"
+                  type="number"
+                  defaultValue={car.pricing.deposit}
+                />
+              </div>
+            </div>
           </div>
 
           {/* The copy the customer reads. Editable here as well as on create,

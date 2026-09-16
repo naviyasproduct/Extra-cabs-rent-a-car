@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import crypto from "node:crypto";
+import { suggestedTiers } from "@/lib/pricing";
 import type { PanelData, StaffUser } from "./types";
 
 /**
@@ -169,12 +170,33 @@ function hydrate(data: PanelData): PanelData {
       vehicle.hybrid = true;
     }
     vehicle.hybrid ??= false;
+
+    // Weekly and monthly were single totals before the rate table. A stored
+    // figure becomes that tier's per-day rate so nothing the owner typed is
+    // lost; the tiers it cannot speak for are suggested from the daily rate.
+    if (!vehicle.tiers) {
+      vehicle.tiers = suggestedTiers(vehicle.daily);
+      if (vehicle.weekly) vehicle.tiers.week1 = Math.round(vehicle.weekly / 7);
+      if (vehicle.monthly) vehicle.tiers.month1 = Math.round(vehicle.monthly / 30);
+    }
+    delete vehicle.weekly;
+    delete vehicle.monthly;
   }
 
   for (const override of Object.values(data.vehicleOverrides)) {
     if ((override.fuel as string) === "hybrid") {
       override.fuel = "petrol";
       override.hybrid = true;
+    }
+
+    // Same migration for edits to catalogue vehicles. Only the two tiers the
+    // old fields described are set; the rest fall through to the catalogue.
+    if (override.weekly !== undefined || override.monthly !== undefined) {
+      override.tiers ??= {};
+      if (override.weekly) override.tiers.week1 ??= Math.round(override.weekly / 7);
+      if (override.monthly) override.tiers.month1 ??= Math.round(override.monthly / 30);
+      delete override.weekly;
+      delete override.monthly;
     }
   }
 
