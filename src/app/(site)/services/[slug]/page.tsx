@@ -72,10 +72,10 @@ export default async function ServiceDetailPage({
               <Icon name={service.icon} className="size-6" />
             </span>
             <p className="mt-5 text-sm uppercase tracking-[0.16em] text-muted">
-              Starting from
+              {service.startingFrom ? "Starting from" : "Rates"}
             </p>
             <p className="mt-1 font-display text-3xl font-extrabold">
-              {service.startingFrom}
+              {service.startingFrom ?? "On request"}
             </p>
             <LinkButton href="/booking" size="lg" className="mt-6 w-full">
               Request a quote
@@ -128,6 +128,19 @@ export default async function ServiceDetailPage({
           <Grid className="items-start">
             <div className="col-span-4 md:col-span-8 lg:col-span-7">
               <h2 className="display-md">Rates</h2>
+              {service.priceTable.length === 0 ? (
+                <p className="mt-4 max-w-[48ch] text-muted">
+                  We quote every hire for its dates, distance and vehicle. Call{" "}
+                  <a
+                    href={`tel:${site.phone.replace(/\s/g, "")}`}
+                    className="font-semibold text-brand-bright hover:underline"
+                  >
+                    {site.phone}
+                  </a>{" "}
+                  or message us on WhatsApp for a price.
+                </p>
+              ) : (
+              <>
               <p className="mt-4 max-w-[48ch] text-muted">
                 A guide to what this service costs. Final quotes account for the
                 dates, distance and any extras you add.
@@ -151,6 +164,8 @@ export default async function ServiceDetailPage({
                   ))}
                 </ul>
               </div>
+              </>
+              )}
             </div>
 
             <div className="col-span-4 mt-8 md:col-span-8 lg:col-span-4 lg:col-start-9 lg:mt-0">

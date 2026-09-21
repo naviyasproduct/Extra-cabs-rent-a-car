@@ -1,14 +1,3 @@
-export interface Testimonial {
-  id: string;
-  name: string;
-  role: string;
-  location: string;
-  rating: number;
-  quote: string;
-  /** Rented vehicle, shown as context under the quote. */
-  vehicle: string;
-}
-
 export interface Faq {
   id: string;
   question: string;

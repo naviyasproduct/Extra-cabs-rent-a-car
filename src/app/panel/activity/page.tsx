@@ -1,6 +1,7 @@
 import { requireStaff } from "@/lib/panel/guard";
 import { readData } from "@/lib/panel/store";
 import { colomboDateTime } from "@/lib/panel/time";
+import { SYSTEM_STAFF_ID } from "@/lib/panel/retention";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Activity" };
@@ -20,8 +21,11 @@ export default async function PanelActivity() {
     .reverse()
     .filter((entry) => user.role === "owner" || entry.staffId === user.id);
 
+  // "system" is the retention rule deleting ID photos on its own schedule.
   const staffName = (id: string) =>
-    data.staff.find((s) => s.id === id)?.name ?? "Unknown";
+    id === SYSTEM_STAFF_ID
+      ? "Automatic"
+      : (data.staff.find((s) => s.id === id)?.name ?? "Unknown");
 
   return (
     <div className="flex flex-col gap-8">

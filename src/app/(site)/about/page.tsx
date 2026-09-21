@@ -12,35 +12,15 @@ export const metadata: Metadata = {
   openGraph: { url: "/about" },
   title: "About us",
   description:
-    "Extra Cabs & Rent a Cars has been renting vehicles in Sri Lanka since 2016. Forty vehicles, one office in Heiyanthuduwa, and one standard of upkeep.",
+    "Extra Cabs & Rent a Cars has been renting vehicles in Sri Lanka since 2019, from one office in Heiyanthuduwa, Biyagama. Self-drive hire, cabs with a driver and airport transfers.",
 };
 
-const milestones = [
-  {
-    year: "2016",
-    title: "Three cars and a phone",
-    description:
-      "Started in Heiyanthuduwa with an Alto, a Wagon R and a Prius, renting mostly to neighbours and word-of-mouth referrals.",
-  },
-  {
-    year: "2019",
-    title: "Airport counter opens",
-    description:
-      "Added the Katunayake handover point and the fixed-fare transfer service that now runs around the clock.",
-  },
-  {
-    year: "2022",
-    title: "Corporate leasing",
-    description:
-      "Began long-term leasing for companies, which brought the fleet past twenty five vehicles for the first time.",
-  },
-  {
-    year: "2025",
-    title: "Forty vehicles",
-    description:
-      "One office in Heiyanthuduwa, with delivery anywhere on the island.",
-  },
-];
+/*
+ * There used to be a four-step history here (2016 to 2025, "Forty vehicles",
+ * an airport counter) and a stats panel ("12k+ rentals", "4.8/5"). None of it
+ * was real, and the business was founded in 2019, so both were removed on
+ * 2026-09-21. Add real milestones when the client supplies them.
+ */
 
 export default async function AboutPage() {
   const locations = await getLocations();
@@ -50,21 +30,8 @@ export default async function AboutPage() {
       <PageHeader
         eyebrow="About us"
         title="A rental company that answers the phone"
-        description="We have been putting people in cars across Sri Lanka since 2016. The fleet has grown; the way we hand over a vehicle has not changed."
+        description={`We have been putting people in cars across Sri Lanka since ${site.established}. The fleet has grown; the way we hand over a vehicle has not changed.`}
         crumbs={[{ label: "About" }]}
-        aside={
-          <div className="grid grid-cols-2 gap-(--gap)">
-            {site.stats.map((stat) => (
-              <div key={stat.label} className="rounded-(--radius-card) bg-surface p-5">
-                <p className="font-display text-3xl font-extrabold leading-none">
-                  {stat.value}
-                  <span className="text-brand-bright">{stat.suffix}</span>
-                </p>
-                <p className="mt-2 text-sm leading-snug text-muted">{stat.label}</p>
-              </div>
-            ))}
-          </div>
-        }
       />
 
       {/* Story */}
@@ -88,7 +55,7 @@ export default async function AboutPage() {
                   half full. We thought that was a low bar to clear.
                 </p>
                 <p>
-                  Nine years later the operation is bigger but the rules are the
+                  Since {site.established} the operation has grown but the rules are the
                   same: publish the real price, hand over a clean car with a full
                   tank, and pick up the phone whenever it rings. Most of our
                   business still comes from people who rented once and told
@@ -105,41 +72,13 @@ export default async function AboutPage() {
         </Shell>
       </Section>
 
-      {/* Timeline */}
-      <Section band="alt">
-        <Shell>
-          <SectionHeader
-            eyebrow="How we got here"
-            title="Nine years on the road"
-          />
-
-          <div className="mt-8 rule" />
-
-          <Grid>
-            {milestones.map((milestone) => (
-              <div key={milestone.year} className="col-span-4 pt-8 lg:col-span-3">
-                <p className="font-display text-4xl font-extrabold leading-none text-brand-bright">
-                  {milestone.year}
-                </p>
-                <h3 className="mt-5 font-display text-lg font-bold uppercase">
-                  {milestone.title}
-                </h3>
-                <p className="mt-3 max-w-[34ch] text-[0.9375rem] leading-relaxed text-muted">
-                  {milestone.description}
-                </p>
-              </div>
-            ))}
-          </Grid>
-        </Shell>
-      </Section>
-
       {/* Values */}
       <Section band="paper">
         <Shell>
           <SectionHeader
             eyebrow="How we work"
             title="What we hold ourselves to"
-            description="Six commitments that show up on every single rental, from a one-day Alto hire to a twelve-month corporate lease."
+            description="Six commitments that show up on every single rental, from a one-day hire to a twelve-month corporate lease."
           />
 
           <Grid className="mt-8">

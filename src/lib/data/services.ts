@@ -1,6 +1,12 @@
 import type { Service, ServiceSlug } from "@/types";
 
 /**
+ * Prices: every priceTable is empty and every startingFrom is null since
+ * 2026-09-21. The figures that were here were sample data, and several named
+ * vehicles the business does not have. Add the client's real prices back
+ * into these two fields; every page already shows them when present and says
+ * "call or WhatsApp for a quote" when not.
+ *
  * The five things the business sells. Each one gets a card on the home page,
  * a row on /services and a full page at /services/[slug].
  */
@@ -24,7 +30,7 @@ const services: Service[] = [
       {
         title: "No hidden charges",
         description:
-          "The rate you see is the rate you pay. Insurance, basic maintenance and unlimited kilometres are all in the daily price.",
+          "The rate you see is the rate you pay. Insurance, basic maintenance and 100 km a day are all in the daily price, and each vehicle's extra-kilometre rate is published on its page.",
       },
       {
         title: "Delivered to your door",
@@ -32,9 +38,9 @@ const services: Service[] = [
           "We drop the vehicle wherever you are inside Colombo at no cost, and collect it the same way when you are done.",
       },
       {
-        title: "Unlimited kilometres",
+        title: "100 km a day included",
         description:
-          "No distance limit and no per-kilometre charge. Drive as far as the trip needs.",
+          "Every hire day includes 100 km. Beyond that you pay a fixed rate per kilometre, shown on each vehicle's page before you book.",
       },
       {
         title: "Cleaned before every handover",
@@ -42,13 +48,8 @@ const services: Service[] = [
           "Every car is washed inside and out, fuelled and safety-checked before it reaches you.",
       },
     ],
-    priceTable: [
-      { label: "Micro & budget", detail: "Alto, Wagon R", price: "From LKR 5,500 / day" },
-      { label: "Hatchback & sedan", detail: "Aqua, Prius, Premio", price: "From LKR 9,500 / day" },
-      { label: "SUV & 4x4", detail: "C-HR, Vezel, Prado", price: "From LKR 13,500 / day" },
-      { label: "Van", detail: "KDH Hiace", price: "From LKR 18,500 / day" },
-    ],
-    startingFrom: "LKR 5,500 / day",
+    priceTable: [],
+    startingFrom: null,
     featured: true,
   },
   {
@@ -88,13 +89,8 @@ const services: Service[] = [
           "Common Colombo routes have flat fares, so a traffic jam never changes the price you were quoted.",
       },
     ],
-    priceTable: [
-      { label: "City hire", detail: "Within Colombo, per hour", price: "LKR 1,800 / hour" },
-      { label: "Full day", detail: "10 hours + 100 km", price: "From LKR 14,000 / day" },
-      { label: "Outstation day", detail: "Beyond Western Province", price: "From LKR 18,000 / day" },
-      { label: "Driver batta", detail: "Overnight allowance", price: "LKR 2,500 / night" },
-    ],
-    startingFrom: "LKR 1,800 / hour",
+    priceTable: [],
+    startingFrom: null,
     featured: true,
   },
   {
@@ -134,13 +130,8 @@ const services: Service[] = [
           "Pickups run around the clock at the same fare. There is no night surcharge.",
       },
     ],
-    priceTable: [
-      { label: "BIA to Colombo", detail: "Sedan, up to 3 passengers", price: "LKR 9,500" },
-      { label: "BIA to Negombo", detail: "Sedan, up to 3 passengers", price: "LKR 5,500" },
-      { label: "BIA to Kandy", detail: "SUV, up to 4 passengers", price: "LKR 22,000" },
-      { label: "BIA to Galle", detail: "SUV, up to 4 passengers", price: "LKR 26,000" },
-    ],
-    startingFrom: "LKR 5,500",
+    priceTable: [],
+    startingFrom: null,
     featured: true,
   },
   {
@@ -180,13 +171,8 @@ const services: Service[] = [
           "The chauffeur drives the route beforehand so the timing on the day is exact.",
       },
     ],
-    priceTable: [
-      { label: "Luxury sedan", detail: "Mercedes-Benz E-Class, decorated", price: "From LKR 45,000" },
-      { label: "Premium SUV", detail: "Prado or Montero, decorated", price: "From LKR 32,000" },
-      { label: "Family convoy", detail: "Two sedans + one van", price: "From LKR 65,000" },
-      { label: "Photo-shoot hours", detail: "Additional, per hour", price: "LKR 4,500 / hour" },
-    ],
-    startingFrom: "LKR 32,000",
+    priceTable: [],
+    startingFrom: null,
     featured: false,
   },
   {
@@ -226,13 +212,8 @@ const services: Service[] = [
           "Monthly invoicing, purchase order references and a named account manager for your business.",
       },
     ],
-    priceTable: [
-      { label: "Micro & budget", detail: "12-month term", price: "From LKR 120,000 / month" },
-      { label: "Sedan", detail: "12-month term", price: "From LKR 265,000 / month" },
-      { label: "SUV", detail: "12-month term", price: "From LKR 310,000 / month" },
-      { label: "Van", detail: "12-month term", price: "From LKR 420,000 / month" },
-    ],
-    startingFrom: "LKR 120,000 / month",
+    priceTable: [],
+    startingFrom: null,
     featured: false,
   },
 ];

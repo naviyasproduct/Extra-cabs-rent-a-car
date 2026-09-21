@@ -165,6 +165,14 @@ export default async function PanelFleet({
                 <RateEditor />
               </div>
               <FormField label="Deposit" name="deposit" type="number" placeholder="30000" />
+              {/* Charged per km beyond 100 km a day. Blank shows "ask us" on
+                  the vehicle page rather than a made-up figure. */}
+              <FormField
+                label="Extra km, per km"
+                name="extraKm"
+                type="number"
+                placeholder="e.g. 60"
+              />
               <FormField
                 label="With a driver, per day"
                 name="withDriverDaily"

@@ -18,15 +18,22 @@ import { CarCard } from "@/components/fleet/CarCard";
 import { JsonLd } from "@/components/common/JsonLd";
 import { breadcrumbLd, carLd } from "@/lib/seo";
 import { formatPrice } from "@/lib/utils";
-import { AvailabilityDot, Badge, Rating } from "@/components/ui/Badge";
+import { KM_PER_DAY } from "@/lib/pricing";
+import { AvailabilityDot, Badge } from "@/components/ui/Badge";
 import { LinkButton } from "@/components/ui/Button";
 import { Grid, Section, SectionHeader, Shell } from "@/components/ui/Layout";
 import { categoryLabels } from "@/lib/data/cars";
-import { publicCarBySlug, publicCarSlugs, publicRelatedCars } from "@/lib/fleet";
+import { publicCarBySlug, publicRelatedCars } from "@/lib/fleet";
 
-export async function generateStaticParams() {
-  return (await publicCarSlugs()).map((slug) => ({ slug }));
-}
+/*
+ * No generateStaticParams, deliberately. Vehicles are added by staff in the
+ * panel after launch, so they do not exist at build time. With an empty or
+ * partial list, Next tries to render an unlisted vehicle statically on its
+ * first visit, meets the connection() call in publicCarBySlug, and aborts with
+ * DYNAMIC_SERVER_USAGE: a 500 on every vehicle added after deploy, and on
+ * every unknown slug instead of a 404. Found 2026-09-21. This page is dynamic
+ * by nature; let it be.
+ */
 
 export async function generateMetadata({
   params,
@@ -39,7 +46,7 @@ export async function generateMetadata({
 
   const drivetrain = car.specs.hybrid ? `${car.specs.fuel} hybrid` : car.specs.fuel;
 
-  const description = `Hire the ${car.name} (${car.year}) in Colombo from ${formatPrice(car.pricing.daily)} a day. ${car.specs.seats} seats, ${car.specs.transmission}, ${drivetrain}. Unlimited kilometres.`;
+  const description = `Hire the ${car.name} (${car.year}) in Colombo from ${formatPrice(car.pricing.daily)} a day. ${car.specs.seats} seats, ${car.specs.transmission}, ${drivetrain}. ${KM_PER_DAY} km a day included.`;
 
   return {
     title: `${car.name} hire`,
@@ -60,7 +67,7 @@ const included = [
   "24/7 roadside assistance",
   "Free delivery inside Colombo",
   "Basic servicing and maintenance",
-  "Unlimited kilometres",
+  `${KM_PER_DAY} km a day included`,
   "Full tank at handover",
   "Second driver at no charge",
 ];
@@ -68,8 +75,8 @@ const included = [
 const requirements = [
   "Valid driving licence, or an international permit endorsed locally",
   "NIC or passport for identification",
-  "Minimum age 23 with one year of driving experience",
-  "Refundable deposit paid before handover",
+  "Licence held for at least one year",
+  "Security deposit paid at handover",
 ];
 
 export default async function CarDetailPage({
@@ -148,7 +155,6 @@ export default async function CarDetailPage({
               </div>
 
               <div className="col-span-4 mt-6 flex flex-wrap items-center gap-x-6 gap-y-2 md:col-span-8 lg:col-span-4 lg:mt-0 lg:justify-end">
-                <Rating value={car.rating} count={car.reviewCount} />
                 <AvailabilityDot available={car.available} />
               </div>
             </Grid>

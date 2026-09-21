@@ -35,8 +35,8 @@ export default async function ContactPage() {
     {
       icon: Mail,
       label: "Email bookings",
-      value: site.bookingEmail,
-      href: `mailto:${site.bookingEmail}`,
+      value: site.email,
+      href: `mailto:${site.email}`,
       note: "Replies within one working day",
     },
   ];

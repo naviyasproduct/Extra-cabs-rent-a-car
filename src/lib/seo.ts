@@ -6,8 +6,12 @@ import { site, siteUrl } from "@/lib/data/site";
  *
  * Everything here returns a plain object that gets rendered by <JsonLd>. Search
  * engines read these to understand what the page is about, which is what earns
- * rich results: star ratings on a vehicle, an expandable FAQ, the business card
- * with opening hours.
+ * rich results: an expandable FAQ, the business card with opening hours.
+ *
+ * NEVER emit aggregateRating or Review from invented numbers. Vehicle ratings
+ * used to be built from made-up figures in cars.ts; that is against Google's
+ * structured data policy and risks a manual action on the whole site. They were
+ * removed on 2026-09-21. Only real, verifiable reviews may come back.
  *
  * The @id values matter. They let separate blocks on separate pages refer to
  * the same entity, so the agency described on the home page is understood to be
@@ -59,10 +63,13 @@ export function organisationLd(locations: Location[] = []) {
     image: absoluteUrl("/images/home/home-new-vehicles-lineup.png"),
     telephone: site.phone,
     email: site.email,
-    foundingDate: String(site.established),
+    // Founded 1 January 2019, per the client.
+    foundingDate: `${site.established}-01-01`,
     currenciesAccepted: "LKR",
     paymentAccepted: "Cash, Bank transfer",
-    priceRange: "LKR 6,000 to LKR 30,000 per day",
+    // No priceRange. It said "LKR 6,000 to LKR 30,000 per day", worked out
+    // from the sample fleet removed on 2026-09-21. Add it back from real
+    // rates once the fleet is listed, or it misstates the business.
     address: {
       "@type": "PostalAddress",
       streetAddress: [site.address.line1, site.address.line2].filter(Boolean).join(", "),
@@ -70,6 +77,14 @@ export function organisationLd(locations: Location[] = []) {
       ...(site.address.postal ? { postalCode: site.address.postal } : {}),
       addressCountry: "LK",
     },
+    // The pin itself, read from the place link, not the map view centre. See
+    // site.geo. A core signal for "near me" searches.
+    geo: {
+      "@type": "GeoCoordinates",
+      latitude: site.geo.latitude,
+      longitude: site.geo.longitude,
+    },
+    hasMap: site.mapLink,
     areaServed: { "@type": "Country", name: "Sri Lanka" },
     openingHoursSpecification: [
       {
@@ -109,7 +124,7 @@ export function websiteLd() {
 
 /**
  * A vehicle. Typed as both Product and Car: Car carries the specifications,
- * Product is what rich-result parsers look for when reading price and rating.
+ * Product is what rich-result parsers look for when reading price.
  */
 export function carLd(car: Car) {
   return {
@@ -136,13 +151,6 @@ export function carLd(car: Car) {
         value: car.specs.engineCc,
         unitCode: "CMQ",
       },
-    },
-    aggregateRating: {
-      "@type": "AggregateRating",
-      ratingValue: car.rating,
-      reviewCount: car.reviewCount,
-      bestRating: 5,
-      worstRating: 1,
     },
     offers: {
       "@type": "Offer",
@@ -180,12 +188,17 @@ export function serviceLd(service: Service) {
     serviceType: service.name,
     provider: { "@id": ORGANISATION_ID },
     areaServed: { "@type": "Country", name: "Sri Lanka" },
-    offers: {
-      "@type": "Offer",
-      priceCurrency: "LKR",
-      description: service.startingFrom,
-      seller: { "@id": ORGANISATION_ID },
-    },
+    // Only with a real price. An Offer with no price is noise to a crawler.
+    ...(service.startingFrom
+      ? {
+          offers: {
+            "@type": "Offer",
+            priceCurrency: "LKR",
+            description: service.startingFrom,
+            seller: { "@id": ORGANISATION_ID },
+          },
+        }
+      : {}),
   };
 }
 

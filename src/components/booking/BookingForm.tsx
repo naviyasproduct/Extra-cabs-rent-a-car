@@ -27,8 +27,8 @@ import type {
   UploadedDocument,
 } from "@/types";
 import { requiredSlots } from "@/types";
-import { cn, daysBetween, formatPrice, isoDaysFromNow, todayIso } from "@/lib/utils";
-import { rateForDays, tierForDays } from "@/lib/pricing";
+import { cn, daysBetween, formatNumber, formatPrice, isoDaysFromNow, todayIso } from "@/lib/utils";
+import { KM_PER_DAY, kmAllowance, rateForDays, tierForDays } from "@/lib/pricing";
 import {
   checkEmail,
   checkPhone,
@@ -823,8 +823,10 @@ export function BookingForm({ cars }: { cars: Car[] }) {
                 <Link href="/terms" className="font-medium text-brand-bright hover:underline">
                   rental terms
                 </Link>
-                . A refundable deposit of {formatPrice(totals.deposit)} is collected
-                at handover.
+, including that the rental charge is not refundable once paid. A
+                security deposit of {formatPrice(totals.deposit)} is collected at
+                handover and returned after the vehicle comes back, less any
+                deductions.
               </p>
             </div>
           ) : null}
@@ -923,8 +925,13 @@ export function BookingForm({ cars }: { cars: Car[] }) {
               </span>
             </div>
             <p className="mt-3 text-sm leading-relaxed text-muted">
-              Includes insurance and unlimited kilometres. Refundable
-              deposit of {formatPrice(totals.deposit)} is separate.
+              {/* The allowance for these dates, from the one KM_PER_DAY figure. */}
+              Includes insurance and{" "}
+              {`${formatNumber(kmAllowance(days))} km (${KM_PER_DAY} a day).`}{" "}
+              {selectedCar?.pricing.extraKm
+                ? `Each extra km is ${formatPrice(selectedCar.pricing.extraKm)}. `
+                : null}
+              Security deposit of {formatPrice(totals.deposit)} is separate.
             </p>
           </div>
         </div>

@@ -6,6 +6,8 @@ import { Section, Shell } from "@/components/ui/Layout";
 import { publicCars, publicCategoryCounts } from "@/lib/fleet";
 import { JsonLd } from "@/components/common/JsonLd";
 import { breadcrumbLd, itemListLd } from "@/lib/seo";
+import { NoVehiclesYet } from "@/components/fleet/NoVehiclesYet";
+import { KM_PER_DAY } from "@/lib/pricing";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/fleet" },
@@ -15,24 +17,30 @@ export const metadata: Metadata = {
     "Browse every vehicle available to rent: micro cars, hatchbacks, sedans, SUVs, vans and luxury cars, with daily rates and full specifications.",
 };
 
-const quickFacts = [
-  { label: "Vehicles on the road", value: "40+" },
-  { label: "Average vehicle age", value: "5 yrs" },
-  { label: "Free delivery", value: "Colombo" },
-];
-
 export default async function FleetPage() {
   const [cars, counts] = await Promise.all([publicCars(), publicCategoryCounts()]);
 
+  // True facts only. This used to claim "40+ vehicles on the road", a
+  // "5 yrs" average age and free Colombo delivery, none of it real. The count
+  // is live, so it grows as staff add vehicles in the panel.
+  const quickFacts = [
+    { label: "Vehicles listed", value: String(cars.length) },
+    { label: "Kilometres included", value: `${KM_PER_DAY} km / day` },
+    { label: "Payment", value: "Cash or transfer" },
+  ];
+
   return (
     <>
-      <JsonLd
-        data={itemListLd(
-          "Extra Cabs fleet",
-          "/fleet",
-          cars.map((car) => ({ name: car.name, path: `/fleet/${car.slug}` })),
-        )}
-      />
+      {/* An empty ItemList tells search engines the page lists nothing. */}
+      {cars.length > 0 ? (
+        <JsonLd
+          data={itemListLd(
+            "Extra Cabs fleet",
+            "/fleet",
+            cars.map((car) => ({ name: car.name, path: `/fleet/${car.slug}` })),
+          )}
+        />
+      ) : null}
       <JsonLd
         data={breadcrumbLd([
           { name: "Home", path: "/" },
@@ -71,7 +79,11 @@ export default async function FleetPage() {
               </div>
             }
           >
-            <FleetBrowser cars={cars} counts={counts} />
+            {cars.length > 0 ? (
+              <FleetBrowser cars={cars} counts={counts} />
+            ) : (
+              <NoVehiclesYet />
+            )}
           </Suspense>
         </Shell>
       </Section>

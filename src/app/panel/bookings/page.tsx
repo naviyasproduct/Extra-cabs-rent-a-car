@@ -3,10 +3,17 @@ import { slotLabels } from "@/lib/panel/uploads";
 import { requireStaff, canWrite } from "@/lib/panel/guard";
 import { readData } from "@/lib/panel/store";
 import { colomboDateTime } from "@/lib/panel/time";
+import { purgeExpiredDocuments } from "@/lib/panel/retention";
+import {
+  HIRED_RETENTION_DAYS,
+  UNHIRED_RETENTION_DAYS,
+  documentsExpireOn,
+} from "@/lib/panel/retention-rules";
 import { listVehicles } from "@/lib/fleet";
 import { formatPrice } from "@/lib/utils";
 import {
   deleteBookingAction,
+  setBookingIdentityAction,
   setBookingPaymentAction,
   setBookingStatusAction,
 } from "../actions";
@@ -30,6 +37,9 @@ export default async function PanelBookings({
 }) {
   const { error } = await searchParams;
   const user = await requireStaff();
+  // The retention rule runs here because there is no scheduler yet. It must
+  // run before readData() so this screen never lists a photo it just deleted.
+  purgeExpiredDocuments();
   const data = readData();
   const vehicles = await listVehicles();
 
@@ -48,6 +58,13 @@ export default async function PanelBookings({
         <p className="mt-2 max-w-[62ch] text-sm text-muted">
           Confirming a booking or starting a hire takes that vehicle off the
           public website automatically. Cancelling or returning puts it back.
+        </p>
+        <p className="mt-2 max-w-[62ch] text-sm text-muted">
+          ID and licence photos are deleted {HIRED_RETENTION_DAYS} days after a
+          hire ends, or {UNHIRED_RETENTION_DAYS} days after a request that never
+          became a hire. The booking stays. Type the ID and licence numbers in at
+          handover so the customer can still be identified afterwards, and tick
+          the hold while a fine, damage claim or dispute is open.
         </p>
       </div>
 
@@ -132,9 +149,16 @@ export default async function PanelBookings({
                     </div>
                   ) : (
                     <p className="mt-3 text-xs text-muted">
-                      No identity documents on this booking.
+                      {booking.documentsPurgedAt
+                        ? `ID photos deleted ${colomboDateTime(booking.documentsPurgedAt)} under the retention rule.`
+                        : "No identity documents on this booking."}
                     </p>
                   )}
+                  <RetentionNote
+                    hold={booking.documentsHold}
+                    expires={documentsExpireOn(booking)}
+                    hasDocuments={booking.documents.length > 0}
+                  />
 
                   <p className="mt-2 text-xs text-muted">
                     Raised {colomboDateTime(booking.createdAt)} · handled by{" "}
@@ -215,6 +239,47 @@ export default async function PanelBookings({
                   </button>
                 </form>
 
+                <form action={setBookingIdentityAction} className="flex flex-wrap items-end gap-2">
+                  <input type="hidden" name="id" value={booking.id} />
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                      {booking.idType === "passport" ? "Passport no." : "NIC no."}
+                    </span>
+                    <input
+                      name="idNumber"
+                      defaultValue={booking.idNumber}
+                      autoComplete="off"
+                      className="h-10 w-40 bg-field px-3 text-sm"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                      Licence no.
+                    </span>
+                    <input
+                      name="licenceNumber"
+                      defaultValue={booking.licenceNumber}
+                      autoComplete="off"
+                      className="h-10 w-40 bg-field px-3 text-sm"
+                    />
+                  </label>
+                  <label className="flex h-10 items-center gap-2 text-sm text-ink-soft">
+                    <input
+                      type="checkbox"
+                      name="documentsHold"
+                      defaultChecked={booking.documentsHold}
+                      className="size-4 accent-(--color-brand)"
+                    />
+                    Hold photos
+                  </label>
+                  <button
+                    type="submit"
+                    className="h-10 rounded-full bg-field px-4 text-sm font-semibold transition-colors hover:bg-field-hover"
+                  >
+                    Save
+                  </button>
+                </form>
+
                 {canDelete ? (
                   <form action={deleteBookingAction} className="ml-auto">
                     <input type="hidden" name="id" value={booking.id} />
@@ -234,4 +299,23 @@ export default async function PanelBookings({
       </div>
     </div>
   );
+}
+
+/** When this booking's photos will go, in words. Nothing when there are none. */
+function RetentionNote({
+  hold,
+  expires,
+  hasDocuments,
+}: {
+  hold: boolean;
+  expires: string | null;
+  hasDocuments: boolean;
+}) {
+  if (!hasDocuments) return null;
+  const text = hold
+    ? "On hold: these photos are kept until the hold is released."
+    : expires
+      ? `Photos will be deleted on ${expires}.`
+      : "Photos are kept while the hire is live.";
+  return <p className="mt-1.5 text-xs text-muted">{text}</p>;
 }

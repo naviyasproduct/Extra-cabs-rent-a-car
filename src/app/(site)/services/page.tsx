@@ -95,13 +95,16 @@ export default async function ServicesPage() {
                       >
                         <div className="flex items-baseline justify-between gap-4">
                           <h3 className="font-display text-lg font-bold uppercase">
-                            Indicative rates
+                            {service.priceTable.length > 0 ? "Indicative rates" : "Rates"}
                           </h3>
-                          <span className="font-display text-sm font-semibold uppercase tracking-[0.08em] text-brand-bright">
-                            from {service.startingFrom}
-                          </span>
+                          {service.startingFrom ? (
+                            <span className="font-display text-sm font-semibold uppercase tracking-[0.08em] text-brand-bright">
+                              from {service.startingFrom}
+                            </span>
+                          ) : null}
                         </div>
 
+                        {service.priceTable.length > 0 ? (
                         <ul className="mt-5">
                           {service.priceTable.map((row, rowIndex) => (
                             <li key={row.label}>
@@ -132,6 +135,7 @@ export default async function ServicesPage() {
                             </li>
                           ))}
                         </ul>
+                        ) : null}
 
                         <p
                           className={cn(
@@ -139,8 +143,9 @@ export default async function ServicesPage() {
                             "text-muted",
                           )}
                         >
-                          Rates are a guide. Send us the dates and we will come back
-                          with an exact quote, including any delivery charge.
+                          {service.priceTable.length > 0
+                            ? "Rates are a guide. Send us the dates and we will come back with an exact quote, including any delivery charge."
+                            : "We quote every hire for its dates, distance and vehicle. Call or WhatsApp us and we will come back with an exact price."}
                         </p>
                       </div>
                     </div>

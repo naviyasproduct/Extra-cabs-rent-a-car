@@ -83,3 +83,23 @@ export function tierForDays(days: number): RateTier | null {
   }
   return found;
 }
+
+/* -------------------------------------------------------------------------- */
+/* Kilometres                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Kilometres included for each day of a hire. Client policy from 2026-09-21,
+ * replacing the unlimited kilometres the site promised before. Every kilometre
+ * beyond the allowance is charged at the vehicle's own `pricing.extraKm`.
+ *
+ * One number, so the terms, the FAQ, the price card and the booking summary
+ * cannot quote different allowances. The copy that states it in words is
+ * listed in HANDOVER, 2026-09-21: change those too if this ever moves.
+ */
+export const KM_PER_DAY = 100;
+
+/** Kilometres included in a hire of `days`. */
+export function kmAllowance(days: number): number {
+  return Math.max(0, days) * KM_PER_DAY;
+}

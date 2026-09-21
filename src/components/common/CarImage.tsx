@@ -2,7 +2,8 @@ import { Car as CarIcon } from "lucide-react";
 import { SafeImage } from "./SafeImage";
 
 interface CarImageProps {
-  src: string;
+  /** Missing or empty shows the placeholder tile. */
+  src: string | undefined;
   alt: string;
   /** Shown inside the placeholder while the real photo is missing. */
   label?: string;

@@ -25,7 +25,10 @@ export function CarGallery({
 }) {
   const [active, setActive] = useState(0);
   const capped = images.slice(0, MAX_VEHICLE_IMAGES);
-  const shots = capped.length > 0 ? capped : ["/images/cars/placeholder.png"];
+  // No photos yet renders one placeholder plate. This used to point at
+  // /images/cars/placeholder.png, a file that never existed, so it only
+  // reached the placeholder after a failed request.
+  const shots: (string | undefined)[] = capped.length > 0 ? capped : [undefined];
 
   return (
     <div>

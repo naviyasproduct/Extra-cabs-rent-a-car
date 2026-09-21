@@ -27,7 +27,9 @@ export interface Service {
   icon: string;
   bullets: string[];
   highlights: ServiceHighlight[];
+  /** Empty until the client supplies real prices. Pages then show a quote line. */
   priceTable: ServicePriceRow[];
-  startingFrom: string;
+  /** e.g. "LKR 5,500 / day". Null until a real price exists. */
+  startingFrom: string | null;
   featured: boolean;
 }

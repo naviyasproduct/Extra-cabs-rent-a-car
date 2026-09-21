@@ -5,7 +5,8 @@ import { useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 interface SafeImageProps {
-  src: string;
+  /** Empty or missing renders the placeholder without a request. */
+  src: string | undefined;
   alt: string;
   /** Rendered inside the placeholder while the real file is missing. */
   fallback: ReactNode;
@@ -60,7 +61,10 @@ export function SafeImage({
 }: SafeImageProps) {
   const [failed, setFailed] = useState(false);
 
-  if (failed) {
+  // No source at all is the normal case for a vehicle added in the panel
+  // before its photos are uploaded. next/image throws on a missing src, so
+  // this has to be caught here rather than left to onError.
+  if (failed || !src) {
     return (
       <div
         role="img"

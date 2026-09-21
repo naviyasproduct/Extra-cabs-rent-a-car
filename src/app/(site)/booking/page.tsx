@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/layout/PageHeader";
 import { BookingForm } from "@/components/booking/BookingForm";
 import { Section, Shell } from "@/components/ui/Layout";
 import { publicCars } from "@/lib/fleet";
+import { NoVehiclesYet } from "@/components/fleet/NoVehiclesYet";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/booking" },
@@ -34,7 +35,13 @@ export default async function BookingPage() {
               </div>
             }
           >
-            <BookingForm cars={cars} />
+            {/* The form needs a vehicle at step 2 and cannot continue without
+                one, so with nothing listed it would be a dead end. */}
+            {cars.length > 0 ? (
+              <BookingForm cars={cars} />
+            ) : (
+              <NoVehiclesYet title="Book by phone or WhatsApp for now" />
+            )}
           </Suspense>
         </Shell>
       </Section>

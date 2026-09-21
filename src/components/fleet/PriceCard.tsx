@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowRight, MessageCircle, Phone } from "lucide-react";
 import type { Car } from "@/types";
 import { site } from "@/lib/data/site";
-import { RATE_TIERS, tierTotal } from "@/lib/pricing";
+import { KM_PER_DAY, RATE_TIERS, tierTotal } from "@/lib/pricing";
 import { cn, formatNumber, formatPrice } from "@/lib/utils";
 
 /**
@@ -72,11 +72,20 @@ export function PriceCard({ car }: { car: Car }) {
 
         <dl className="mt-6 space-y-3 text-sm">
           <div className="flex items-baseline justify-between gap-4">
-            <dt className="text-muted">Kilometres</dt>
-            <dd className="font-semibold">Unlimited</dd>
+            <dt className="text-muted">Kilometres included</dt>
+            <dd className="font-semibold">{KM_PER_DAY} km / day</dd>
           </div>
           <div className="flex items-baseline justify-between gap-4">
-            <dt className="text-muted">Refundable deposit</dt>
+            <dt className="text-muted">Each extra km</dt>
+            {/* No rate set yet is said plainly, never filled with a guess. */}
+            <dd className="font-semibold">
+              {car.pricing.extraKm ? formatPrice(car.pricing.extraKm) : "Ask us"}
+            </dd>
+          </div>
+          <div className="flex items-baseline justify-between gap-4">
+            {/* "Security", not "refundable": it comes back less deductions,
+                and the rent beside it is not refundable at all. */}
+            <dt className="text-muted">Security deposit</dt>
             <dd className="font-semibold">{formatPrice(car.pricing.deposit)}</dd>
           </div>
           <div className="flex items-baseline justify-between gap-4">

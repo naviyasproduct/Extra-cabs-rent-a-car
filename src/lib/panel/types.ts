@@ -169,6 +169,25 @@ export interface PanelBooking {
    * whole JSON file is read and rewritten on every request.
    */
   documents: UploadedDocument[];
+  /**
+   * NIC or passport number and driving licence number, typed by staff at
+   * handover. These are what keep a past customer identifiable after the
+   * photos are deleted (see lib/panel/retention-rules.ts). Empty until typed.
+   */
+  idNumber: string;
+  licenceNumber: string;
+  /**
+   * When the booking was marked returned or cancelled. The retention clock
+   * starts here. Null while the booking is still live.
+   */
+  closedAt: string | null;
+  /**
+   * Set by staff while a fine, damage claim or dispute is open. The photos
+   * are never deleted while this is true.
+   */
+  documentsHold: boolean;
+  /** When the photos were deleted under the retention rule. Null if never. */
+  documentsPurgedAt: string | null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -244,6 +263,8 @@ export interface VehicleOverride {
   /** Legacy. Migrated into `tiers` by hydrate() and then removed. */
   monthly?: number;
   deposit?: number;
+  /** LKR per km beyond the allowance. Null clears it back to "ask us". */
+  extraKm?: number | null;
   withDriverDaily?: number | null;
   seats?: number;
   doors?: number;
@@ -283,6 +304,8 @@ export interface CreatedVehicle {
   /** Legacy. Migrated into `tiers` by hydrate() and then removed. */
   monthly?: number;
   deposit: number;
+  /** LKR per km beyond the allowance. Null until someone sets one. */
+  extraKm: number | null;
   withDriverDaily: number | null;
   images: string[];
   available: boolean;

@@ -10,7 +10,7 @@ import { hashPassword, newId, readData, writeData } from "@/lib/panel/store";
 import { closeShift, openShift, markAway } from "@/lib/panel/time";
 import { closeWindow, redeemCode, requestWindow, scopeLabel } from "@/lib/panel/window";
 import { vehicleBySlug } from "@/lib/fleet";
-import { saveDocument } from "@/lib/panel/uploads";
+import { deleteDocument, saveDocument } from "@/lib/panel/uploads";
 import { notifyNewBooking, sendTestSms } from "@/lib/sms/notify";
 import { toMsisdn } from "@/lib/sms/textlk";
 import {
@@ -226,6 +226,11 @@ export async function updateVehicleAction(formData: FormData) {
     hybrid: checkbox(formData.get("hybrid")),
     daily: num("daily", vehicle.car.pricing.daily),
     deposit: num("deposit", vehicle.car.pricing.deposit),
+    // Blank or zero means no rate set, which the vehicle page shows as "ask
+    // us". Absent (a locked fieldset) keeps the current rate.
+    extraKm: keep("extraKm", vehicle.car.pricing.extraKm, () =>
+      optionalRate(formData.get("extraKm")),
+    ),
     featured: formData.get("featured") === "on",
   };
   const tiers = tierRates(formData, next.daily, vehicle.car.pricing.tiers);
@@ -237,7 +242,8 @@ export async function updateVehicleAction(formData: FormData) {
   const pricingChanged =
     next.daily !== vehicle.car.pricing.daily ||
     changedTiers.length > 0 ||
-    next.deposit !== vehicle.car.pricing.deposit;
+    next.deposit !== vehicle.car.pricing.deposit ||
+    next.extraKm !== vehicle.car.pricing.extraKm;
 
   // Pricing has its own scope, so an employee given a photo window cannot
   // quietly change the rates.
@@ -284,6 +290,10 @@ export async function updateVehicleAction(formData: FormData) {
     );
   if (next.deposit !== before.pricing.deposit)
     changes.push(`deposit ${before.pricing.deposit} to ${next.deposit}`);
+  if (next.extraKm !== before.pricing.extraKm)
+    changes.push(
+      `extra km rate ${before.pricing.extraKm ?? "unset"} to ${next.extraKm ?? "unset"}`,
+    );
   if (next.featured !== before.featured)
     changes.push(next.featured ? "featured on the home page" : "unfeatured");
 
@@ -365,12 +375,12 @@ export async function createVehicleAction(formData: FormData) {
       // hurried add still produces a complete rate table.
       tiers: tierRates(formData, daily),
       deposit: num("deposit", 30000),
+      extraKm: optionalRate(formData.get("extraKm")),
       withDriverDaily: optionalRate(formData.get("withDriverDaily")),
-      images: [
-        "/images/cars/fleet-01.jpg",
-        "/images/cars/fleet-02.jpg",
-        "/images/cars/fleet-03.jpg",
-      ],
+      // No photos until photo upload exists. These used to be three stock
+      // photographs, so every vehicle added in the panel showed pictures of
+      // cars that were not it. A placeholder tile is honest; see SafeImage.
+      images: [],
       available: true,
       featured: false,
       createdAt: new Date().toISOString(),
@@ -443,6 +453,10 @@ export async function setBookingStatusAction(formData: FormData) {
     if (!target) return;
     target.status = status;
     target.handledBy = user.id;
+    // Starts the retention clock for the ID photos (lib/panel/retention-rules).
+    // Reopening a closed booking stops it again.
+    const closing = status === "returned" || status === "cancelled";
+    target.closedAt = closing ? (target.closedAt ?? new Date().toISOString()) : null;
 
     // Confirming or starting a hire takes the vehicle off the website.
     // Cancelling or returning puts it back.
@@ -485,6 +499,46 @@ export async function setBookingPaymentAction(formData: FormData) {
   revalidatePath("/panel");
 }
 
+/**
+ * The identity numbers typed at handover, and the retention hold.
+ *
+ * The numbers are what keep a past customer identifiable once the photos are
+ * deleted. The hold stops that deletion while a fine, damage claim or dispute
+ * is open. Any staff member may set both: this is handover work, not an edit
+ * to shared fleet data, so it needs no window.
+ */
+export async function setBookingIdentityAction(formData: FormData) {
+  const user = await requireStaff();
+  const id = String(formData.get("id") ?? "");
+  const idNumber = plainText(formData.get("idNumber"), 40);
+  const licenceNumber = plainText(formData.get("licenceNumber"), 40);
+  // A checkbox posts nothing when unticked, so absent means off.
+  const documentsHold = checkbox(formData.get("documentsHold"));
+
+  const before = readData().bookings.find((b) => b.id === id);
+  if (!before) return;
+
+  writeData((data) => {
+    const target = data.bookings.find((b) => b.id === id);
+    if (!target) return;
+    target.idNumber = idNumber;
+    target.licenceNumber = licenceNumber;
+    target.documentsHold = documentsHold;
+  });
+
+  const changes: string[] = [];
+  if (idNumber !== before.idNumber) changes.push("ID number");
+  if (licenceNumber !== before.licenceNumber) changes.push("licence number");
+  if (documentsHold !== before.documentsHold)
+    changes.push(documentsHold ? "photos put on hold" : "hold released");
+  if (changes.length > 0) {
+    // The numbers themselves stay out of the audit log: it is shown on a
+    // screen, and it is not the place to copy identity numbers into.
+    audit(user.id, "booking.identity", "booking", id, `${before.reference}: ${changes.join(", ")}`);
+  }
+  revalidatePath("/panel/bookings");
+}
+
 export async function deleteBookingAction(formData: FormData) {
   const user = await requireStaff();
   const id = String(formData.get("id") ?? "");
@@ -502,6 +556,9 @@ export async function deleteBookingAction(formData: FormData) {
   }
 
   const booking = readData().bookings.find((b) => b.id === id);
+  // The photos go with the record. Before 2026-09-21 they were left on disk
+  // with nothing pointing at them, so nothing would ever have deleted them.
+  for (const document of booking?.documents ?? []) deleteDocument(document.id);
   writeData((data) => {
     data.bookings = data.bookings.filter((b) => b.id !== id);
   });
@@ -557,6 +614,11 @@ export async function createBookingAction(input: {
     source: input.source ?? "website",
     idType: input.idType ?? "nic",
     documents: input.documents ?? [],
+    idNumber: "",
+    licenceNumber: "",
+    closedAt: null,
+    documentsHold: false,
+    documentsPurgedAt: null,
   };
 
   writeData((data) => {

@@ -2,8 +2,12 @@ import type { NavLink } from "@/types";
 
 /**
  * Single source of truth for company details used across the site.
- * PLACEHOLDER VALUES - swap these for the real ones before showing the
- * site publicly. Everything here is read from components, never hardcoded.
+ * Everything here is read from components, never hardcoded.
+ *
+ * Real values, supplied by the client 2026-09-21. The name, address and phone
+ * number here must match the Google Business Profile character for character:
+ * search engines treat that agreement as evidence the business is where it
+ * says it is. Change one, change the other.
  */
 export const site = {
   name: "Extra Cabs & Rent a Cars",
@@ -12,44 +16,63 @@ export const site = {
   tagline: "Rent a car. Or let us drive.",
   description:
     "Self-drive rentals, cabs with a driver, airport transfers and wedding cars across Sri Lanka. Clean vehicles, honest daily rates, no hidden charges.",
-  established: 2016,
+  /** Founded 1 January 2019. */
+  established: 2019,
 
-  phone: "+94 77 123 4567",
-  phoneAlt: "+94 11 234 5678",
-  whatsapp: "+94 77 123 4567",
-  email: "hello@extracabs.lk",
-  bookingEmail: "bookings@extracabs.lk",
+  /** The business number. It is also the WhatsApp number. */
+  phone: "+94 74 159 6212",
+  /** A second mobile. There is no landline. */
+  phoneAlt: "+94 77 720 2906",
+  whatsapp: "+94 74 159 6212",
+  /** One inbox for everything, bookings included. */
+  email: "extracabsinfo@gmail.com",
 
   /**
    * The one and only location. There are no branches.
-   * The postal code is not known yet; leave it blank rather than guessing,
-   * the renderers below drop empty parts.
+   *
+   * Written as the client gave it: "No 653, Samurdhi Mawatha, Heiyanthuduwa,
+   * Biyagama, Gonawala, Sri Lanka". `addressOneLine` below reproduces exactly
+   * that. The postal code is not known; it stays blank rather than guessed,
+   * and the renderers drop empty parts.
    */
   address: {
-    line1: "653 Samurdhi Mawatha",
-    line2: "",
-    city: "Heiyanthuduwa",
+    line1: "No 653, Samurdhi Mawatha",
+    line2: "Heiyanthuduwa, Biyagama",
+    city: "Gonawala",
     country: "Sri Lanka",
     postal: "",
   },
+
+  /**
+   * Where the pin actually is, read from the Google Maps share link on
+   * 2026-09-21 (the `!3d` and `!4d` values of the place, not the map's
+   * viewport centre, which is a different point). Used for schema.org `geo`.
+   */
+  geo: { latitude: 6.9716567, longitude: 79.9774439 },
 
   hours: {
     office: "Mon to Sat, 8.00 am to 8.00 pm",
     support: "24 hours, every day",
   },
 
+  /**
+   * Real profiles only. These become schema.org `sameAs`, which is how search
+   * engines tie the website to the business's other pages, so a placeholder
+   * here would claim the business IS facebook.com. There is no Instagram.
+   * The TikTok link is stored without the share-tracking query string.
+   */
   socials: [
-    { label: "Facebook", href: "https://facebook.com", icon: "facebook" },
-    { label: "Instagram", href: "https://instagram.com", icon: "instagram" },
-    { label: "WhatsApp", href: "https://wa.me/94771234567", icon: "whatsapp" },
-    { label: "TikTok", href: "https://tiktok.com", icon: "tiktok" },
-  ],
-
-  stats: [
-    { value: "9", suffix: "yrs", label: "On the road since 2016" },
-    { value: "40", suffix: "+", label: "Vehicles in the fleet" },
-    { value: "12k", suffix: "+", label: "Completed rentals" },
-    { value: "4.8", suffix: "/5", label: "Average customer rating" },
+    {
+      label: "Facebook",
+      href: "https://www.facebook.com/p/Extra-Cabs-Rent-a-Car-61565174534040/",
+      icon: "facebook",
+    },
+    { label: "WhatsApp", href: "https://wa.me/94741596212", icon: "whatsapp" },
+    {
+      label: "TikTok",
+      href: "https://www.tiktok.com/@extra.cabs.rent.a",
+      icon: "tiktok",
+    },
   ],
 
   /**
@@ -70,21 +93,22 @@ export const site = {
   },
 
   /**
-   * The office on Google Maps. Two forms of the same place:
+   * The office on Google Maps. Two forms of the same place, both supplied by
+   * the client on 2026-09-21, and both resolving to place id
+   * 0x3ae2570041ddb17b:0x99b363437e3a3654:
    *
-   *   mapEmbed  the iframe src, shown in the footer. This is the URL Google
-   *             hands out under Share, Embed a map, and it carries its own
-   *             place id, so it survives the address text being reworded.
-   *   mapLink   where "Open in Google Maps" goes. Coordinates rather than a
-   *             place id, because a coordinate link opens in the handset app
-   *             on both platforms and never resolves to the wrong branch of a
-   *             similarly named business.
+   *   mapEmbed  the iframe src, shown in the footer, from Share, Embed a map.
+   *   mapLink   where "Open in Google Maps" goes: the place's own share link,
+   *             so it opens the business listing itself, with its reviews and
+   *             directions, in the handset app or the browser.
    *
-   * If the pin is ever wrong, replace both together.
+   * Do not build mapLink from the numbers in the embed URL. Its `!2d`/`!3d`
+   * values are the centre of the map VIEW, not the pin. The previous link was
+   * built that way and landed about 1.1km south of the office.
    */
   mapEmbed:
-    "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d11201.714037917482!2d79.97720745042868!3d6.961579915748608!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3ae2570041ddb17b%3A0x99b363437e3a3654!2sExtra%20Cabs%20%26%20Rent%20A!5e0!3m2!1sen!2slk!4v1789279796675!5m2!1sen!2slk",
-  mapLink: "https://www.google.com/maps/search/?api=1&query=6.9615799,79.9772074",
+    "https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d6897.3156521642795!2d79.97186764625243!3d6.9755882190968554!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x3ae2570041ddb17b%3A0x99b363437e3a3654!2sExtra%20Cabs%20%26%20Rent%20A!5e0!3m2!1sen!2slk!4v1789984896412!5m2!1sen!2slk",
+  mapLink: "https://maps.app.goo.gl/w3V1udhYMzArK2BT6",
 } as const;
 
 /**

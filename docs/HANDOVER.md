@@ -4,14 +4,14 @@
 without reading the whole codebase. If something here is wrong, fix it here
 rather than working around it.
 
-Last updated: **2026-09-17**
+Last updated: **2026-09-20**
 
 ---
 
 ## 1. What this project is
 
-A website for **Extra Cabs & Rent a Cars**, a vehicle rental agency in Colombo,
-Sri Lanka. Self-drive rentals, cabs with a driver, airport transfers, wedding
+A website for **Extra Cabs & Rent a Cars**, a vehicle rental agency in
+Heiyanthuduwa, Biyagama (Gampaha district), Sri Lanka, founded 2019. Self-drive rentals, cabs with a driver, airport transfers, wedding
 cars, long-term lease. Prices in LKR.
 
 The project has **two halves**:
@@ -81,11 +81,15 @@ current piece of work. Its full spec is in
 
 These are invented and must be replaced before launch:
 
-- `src/lib/data/site.ts` - phone numbers, address, email, social links.
-  **The owner's real mobile number is now load-bearing** - it is where every
-  access OTP goes.
-- `src/lib/data/cars.ts` - rates are realistic but made up.
-- `src/app/terms/page.tsx`, `src/app/privacy/page.tsx` - drafted, not vetted.
+- `src/lib/data/site.ts` - **real since 2026-09-21** (phones, email, address,
+  socials, map, founding date). Only the postcode is still unknown.
+- `src/lib/data/cars.ts` - **empty since 2026-09-21, on purpose.** Staff add
+  every vehicle through the panel after launch. The client's fleet is Vezel,
+  Prius, C-HR, Wagon R, Honda Fit GP5, Daihatsu Move Canbus and Honda Insight.
+- `src/lib/data/services.ts` - every price table and "starting from" is empty
+  until the client supplies real prices; pages show a quote line meanwhile.
+- `src/app/(site)/terms/page.tsx`, `src/app/(site)/privacy/page.tsx` -
+  rewritten 2026-09-21 from the client's policy, **not reviewed by a lawyer**.
 - `public/images/cars/` - **all 12 vehicles share three stock photographs.**
   They are not the real fleet: the same three cars appear under twelve names.
   See the README in that folder.
@@ -2223,6 +2227,384 @@ stopped.
 
 Not seen in a real browser. The table sits in the 4 of 12 sidebar at `lg`,
 so the "Total" column is worth one look at 1024px.
+
+### 2026-09-20 - SMS is live, on a borrowed sender ID
+
+The sandbox sender is gone. `TEXTLK_SENDER_ID` is now **`zsensu.com`**, an
+approved sender ID, so booking alerts can carry real traffic for the first
+time. Two environment values and the docs changed; **no code changed**, because
+both credentials were always read from the environment at process start.
+
+**The sender ID is the developer's, not the agency's.** The client did not
+supply a business registration or an NIC, and Text.lk will not register a
+sender ID without one, so the agency has no sender ID and no Text.lk account.
+Texts therefore go out on the developer's account, under the developer's name,
+spending the developer's credit. This is a commercial arrangement, deliberately
+made, and it is written up in [`sms.md`](./sms.md) section 2b.
+
+Three consequences worth knowing before anyone demos this:
+
+- **Recipients see `zsensu.com` as the sender**, not `ExtraCabs`. Say so rather
+  than let the client find out from a received text.
+- **Rotating the token in the Text.lk dashboard revokes access immediately.**
+  Nothing else breaks: `notifyNewBooking` records every attempt as `failed` and
+  the booking still saves, because nothing in `src/lib/sms/` throws at its
+  caller.
+- **The token is the whole lock, and it is readable by anyone with the Vercel
+  project.** Environment Variables are visible to project members. If the
+  Vercel project is handed over before payment, rotate the token first or the
+  revocation is theatre.
+
+Moving to the agency's own sender ID later is two environment values and a
+redeploy, once they produce a BR or an NIC.
+
+> **Credit is low: 4 units, no top-up, as of 2026-09-20.** One booking spends
+> one unit **per staff member with a number saved**, so a booking with the owner
+> and two employees on the list costs three. The **Send a test** button on
+> `/panel/team` spends one per press and has **no confirmation step**, which is
+> now flagged in `sms.md` section 4. A confirm dialog would make that form a
+> client component; not done, because nobody asked.
+
+**Deliberately not verified by sending.** Whether Text.lk accepts `zsensu.com`
+on this token can only be proved by spending a unit, and there were four. The
+value was confirmed written to `.env.local`, and confirmed to pass through
+`smsConfig()` untouched: the sender ID is read, trimmed and length-checked for
+emptiness, and **never validated against a character set**, so the dot in
+`zsensu.com` cannot be rejected by our code. `tsc` clean. The balance endpoint
+in `sms.md` section 6 is a GET and costs nothing, so check the real figure there
+before the first live booking.
+
+### 2026-09-20 (later) - Launch planned: Vercel, the domain, Supabase, SEO
+
+No code changed. Planning session, written up in
+[`launch-plan.md`](./launch-plan.md).
+
+Client has the domain **extracabs.lk** at domains.lk and wants the site
+deployed, Cloudinary and Supabase connected, and the site ranking first for
+"rent a car near Makola", "rent a car Siyabalape" and similar.
+
+**Decisions taken with the developer this session:** full Supabase migration
+(not auth only), Cloudinary for **vehicle photos only** with identity documents
+staying in a private Supabase bucket, the Google Business Profile exists but is
+controlled by the client, and the invented ratings and testimonials get
+stripped.
+
+**Three findings that reframe the work, all verified rather than assumed:**
+
+- **The site is optimised for the wrong town.** "Colombo" appears **29 times**,
+  about 16 in customer-facing copy, while **Makola, Siyabalape, Kadawatha,
+  Biyagama, Kelaniya, Gampaha and Kiribathgoda appear zero times**. The office
+  is in Heiyanthuduwa, Gampaha district. Every keyword the client named is a
+  town the site has never mentioned.
+- **The site publishes fabricated review data.** `carLd()` emits an
+  `aggregateRating` from invented numbers in `cars.ts`, plus six invented
+  testimonials and "4.8/5 from 12,000 rentals" in `site.stats`. Fake review
+  markup is against Google's structured data policy and a manual action would
+  make the client's ranking goal unreachable. This is removed before the site
+  is submitted anywhere.
+- **`/panel` cannot run on Vercel at all** until Supabase lands: the JSON store
+  and `.data/uploads/` both fall back to memory on a read-only filesystem, so
+  every redeploy wipes bookings, staff accounts and customer documents. It must
+  not be publicly reachable before then.
+
+**Also noted for the SEO phase:** `organisationLd()` has **no `geo` block**,
+`areaServed` is the whole of Sri Lanka, `robots.ts` disallows `/panel` and
+`/api` but **not `/999p7k`**, and the footer's four `/fleet?category=` links are
+unresolved duplicate-content variants.
+
+> **The honest limit, and it is in the plan in writing.** "Rent a car near
+> Makola" returns a map pack ranked mostly by the Google Business Profile, where
+> **distance is a dominant factor and cannot be engineered**. First place there
+> for a town the business is not in cannot be promised. First place in the
+> **organic** results below it is a realistic target, and that is what the six
+> planned location pages are for.
+
+### 2026-09-21 - Real business details, 100 km a day, no refunds, legal pages
+
+Launch plan phases 1a, 1b and 1d. Client supplied the real details and three
+policy changes. Answers confirmed by question: **100 km per hire day** with a
+**per-vehicle** extra-km rate, **rent non-refundable** but the deposit still
+returned less deductions, **per-vehicle deposits** kept, and the invented
+history removed.
+
+**Business details** (`src/lib/data/site.ts`)
+
+- Phone `+94 74 159 6212`, which is also WhatsApp. Alt `+94 77 720 2906`. No
+  landline. Email `extracabsinfo@gmail.com`, one inbox: `bookingEmail` deleted
+  and the contact page reads `site.email`.
+- Address as given: "No 653, Samurdhi Mawatha, Heiyanthuduwa, Biyagama,
+  Gonawala, Sri Lanka". `addressOneLine` reproduces it exactly. Schema
+  `addressLocality` is therefore **Gonawala**; confirm that matches the Google
+  Business Profile, because NAP agreement is the point.
+- Socials: real Facebook and TikTok (tracking query stripped), WhatsApp.
+  **Instagram deleted**, since there is none and the entry fed `sameAs`.
+- Founded **2019-01-01**, emitted as `foundingDate`.
+- The office card in `content.ts` had its own hardcoded placeholder landline.
+  It now reads `site.phone`, `site.hours.office` and `addressOneLine`.
+
+> **A real bug, found while reading the map link.** The old `mapLink` used
+> coordinates taken from the embed URL, but an embed's `!2d`/`!3d` values are
+> the **centre of the map view, not the pin**. "Open in Google Maps" was
+> landing people about **1.1km south of the office**. The client's share link
+> was resolved to find the true pin, `6.9716567, 79.9774439`, now `site.geo`.
+> `mapLink` is the share link itself, which opens the listing. There is a
+> comment in `site.ts` so nobody rebuilds it from the embed again.
+
+**100 km a day** (reverses the 2026-09-06 unlimited kilometres policy)
+
+- `KM_PER_DAY = 100` and `kmAllowance(days)` in `src/lib/pricing.ts`. Every
+  place that states the allowance in code reads that one constant.
+- `CarPricing.extraKm: number | null`. Null means no rate set, and the price
+  card says **"Ask us"** rather than showing a guess.
+- Rates set from the client: C-HR 95, Prius 60, Wagon R Stingray 45, Vezel 75.
+  The other eight catalogue vehicles are `null`.
+- Panel: an **Extra km** field on the add and edit forms. It is a pricing
+  field, so an employee needs the pricing window to change it, and the audit
+  line reads "extra km rate 60 to 70". `optionalRate()` parses it, so blank or
+  zero clears it back to "Ask us". `hydrate()` fills `null` on older rows.
+- Copy that stated unlimited kilometres, all rewritten: the price card, the
+  vehicle page's included list and meta description, the booking summary (which
+  now shows the allowance for the chosen dates, e.g. "300 km (100 a day)"), the
+  FAQ, and two self-drive service highlights. The cabs-with-driver service
+  already said "10 hours + 100 km" and is unchanged.
+
+> **If the allowance ever changes**, `KM_PER_DAY` updates the code, but these
+> say "100 km" in words and must be edited by hand: FAQ 8 in `content.ts` and
+> the self-drive highlights in `services.ts`.
+
+**No refunds, deposit returned**
+
+- Terms clause 4: once paid, the rental charge is not refundable, including
+  cancellation, no-show and early return. The old 48 hour / 25 percent schedule
+  and the wedding-car 50 percent clause are gone.
+- **Kept one exception, deliberately:** if *we* cannot supply the confirmed
+  vehicle, the customer gets an equivalent vehicle or their money back.
+  Refusing a refund for the business's own failure is unlikely to hold up and
+  reads badly. Remove it only if the client insists.
+- Deposit relabelled **"Security deposit"** on the price card, not
+  "Refundable": it comes back less deductions, and the rent beside it is not
+  refundable at all. The booking form's confirm step now says both.
+- "Pay the deposit by card" and "all major credit and debit cards" were wrong:
+  payments are **cash and bank transfer** (section 6). Corrected in the FAQ, the
+  how-it-works step and the terms.
+
+**Invented social proof removed** (launch plan 1b)
+
+- `aggregateRating` out of `carLd()`, `rating` and `reviewCount` out of the
+  `Car` type and all 12 vehicles, the visible star rating off the vehicle page.
+  The fleet's "recommended" sort used rating as a tiebreak and now keeps
+  catalogue order. `seo.ts` carries a comment forbidding invented ratings.
+- The six invented testimonials, `Testimonials.tsx`, the `Testimonial` type and
+  the home page slot, deleted.
+- `site.stats` ("12k+ rentals", "4.8/5") deleted, with its slab in `WhyUs.tsx`
+  and its panel on `/about`. `.overlap-up` in `globals.css` is now unused, but
+  kept as a design primitive.
+- `/about`: the 2016 to 2025 milestone timeline removed, "since 2016" and
+  "nine years" now read from `site.established`. The home fleet intro claimed
+  "Forty vehicles, from an Alto to a Prado"; rewritten without a count.
+
+**Legal pages**, rewritten against what the code actually does:
+
+- **Terms**, 11 clauses: the agreement, eligibility and documents, booking and
+  payment, no refunds, kilometres, deposit and its deductions, use, extensions,
+  insurance and damage, personal data, governing law. The allowance and the
+  business details are read from code, not retyped.
+- **Privacy** now names the identity document uploads, which the old draft
+  never mentioned; says a booking texts the customer's name and number to staff
+  through an SMS provider; says providers may store data outside Sri Lanka;
+  cites the PDPA No. 9 of 2022 rights; and discloses the Google Maps frame.
+- **The old privacy draft claimed analytics the site does not have.** It said
+  the site measures visitors. Nothing of the kind is installed. The new page
+  says so, and a comment says to add a clause before adding any.
+
+> **Needs deciding, and the privacy page makes a promise the code does not keep
+> yet.** Clause 5 says bookings and documents are deleted once no longer needed.
+> **Nothing deletes anything today**, as the 2026-09-15 entry recorded. The
+> owner needs to pick a retention period and something needs to enforce it,
+> ideally a scheduled job once Supabase lands.
+
+**Carried over from the old terms draft, still unconfirmed by the client:** the
+minimum age of 23, the LKR 25,000 insurance excess, the "replacement anywhere
+on the island at no charge" breakdown promise, and 30-day corporate invoicing.
+
+> **Is the business really a "(Pvt) Ltd"?** `site.legalName` says so, and the
+> terms now name it as the contracting party. The client has not supplied a
+> business registration. If it is not an incorporated company, the name is
+> wrong in a legal document. Ask.
+
+**Found in passing, and it matters for launch:** `PANEL_SESSION_SECRET` falls
+back to a hardcoded string in `auth.ts`. Unset on Vercel, anyone who reads the
+repo can forge an owner session. Added to the launch plan's environment table.
+
+**Verified on a served production build** (:3124), 63 checks, all passing: the
+real phone, email, geo, `hasMap`, founding date, street address, locality and
+`sameAs` in the business JSON-LD; the new embed and place link in the footer;
+no stats, testimonials or "Forty vehicles" on the home page; 100 km / day and
+the right extra-km rate on the Prius, C-HR, Wagon R and Vezel pages, "Ask us"
+on the Aqua; **no `AggregateRating` anywhere**; every clause of both legal pages;
+no 2016 history on `/about`; the alt number and WhatsApp link on `/contact`.
+As the owner, the Prius edit form is prefilled with 60, the Aqua's is blank,
+and the add form has the new field. **A save was not exercised**, because it
+writes to the dev store.
+
+> **The escape trap, a fourth time, this time in the test.** A whole-word check
+> was written as ``new RegExp(`\b2016\b`)`` in a template literal, where `\b` is
+> a **backspace character**, so the check could never fail and read as a pass.
+> Caught on re-reading. Fixed with `String.raw` and a sanity assertion that the
+> matcher really does catch "2016". **A check that cannot fail is not a check.**
+
+`tsc` clean, build passes, zero em or en dashes.
+
+### 2026-09-21 (later) - Fleet emptied, sample prices gone, 90-day photo rule
+
+Client decisions: the fleet ships at **zero** (staff add vehicles after
+launch), all sample data comes off the site, the business **is** a (Pvt) Ltd
+(so `site.legalName` stands), **no minimum age** but the one-year licence rule
+stays, **no fixed insurance excess**, 100 km confirmed as **per day**, and ID
+photos deleted **90 days after the hire** with the record kept.
+
+**The fleet is empty** (`cars.ts`)
+
+- The twelve sample vehicles, their invented rates and deposits, and the three
+  stock photos (`public/images/cars/` and its README) are deleted. The
+  accessors stay: they are the database seam, and `filterCars()` and the
+  category lists are still used.
+- Panel-added vehicles used to be given the three stock photos, so every car
+  staff added showed pictures of other cars. They now get `images: []`.
+- An empty fleet broke more than it looked: the home grid sat blank under
+  "Pick your ride" with a "See all 0 models" button, `/fleet` offered filters
+  over nothing and said "Nothing matches that combination", Browse by type
+  showed eight tiles of "0 vehicles", and **`/booking` was a dead end**: step 2
+  requires a vehicle, so nobody could get past it. New `NoVehiclesYet`
+  component on all three pages sends people to call or WhatsApp. Browse by type
+  hides itself when empty and, once vehicles exist, shows **only the categories
+  the fleet has**, since each empty tile is a link to an empty page.
+- `/fleet` header claimed "40+ vehicles on the road", "5 yrs" average age and
+  "Free delivery: Colombo". Now a live vehicle count, 100 km / day, and cash or
+  transfer. Empty `ItemList` JSON-LD is no longer emitted.
+
+> **Two real bugs this exposed, both of which would have hit production.**
+>
+> 1. **Every vehicle staff added after launch would have returned a 500.**
+>    `/fleet/[slug]` had a `generateStaticParams`. With a list that does not
+>    include a slug (every car added after the build, and now every car at
+>    all), Next renders that page statically on first visit, meets the
+>    `connection()` call in `publicCarBySlug`, and aborts with
+>    `DYNAMIC_SERVER_USAGE`. Unknown slugs also 500ed instead of 404ing. Removed;
+>    the page is dynamic by nature. It never showed in `next dev`.
+> 2. **A vehicle with no photos crashed the fleet grid.** `CarCard` passed
+>    `car.images[0]`, which is `undefined`, and `next/image` throws on a missing
+>    `src`. `SafeImage` now renders its placeholder when there is no source.
+>    `CarGallery` fell back to `/images/cars/placeholder.png`, **a file that
+>    never existed**, so it only reached the placeholder after a failed request.
+>
+> Also: **the sitemap was frozen at build time**, so cars added after launch
+> would never be listed for search engines. It now has `revalidate = 3600`.
+
+**Sample prices gone**
+
+- All five service price tables and `startingFrom` figures emptied (they named
+  a Prado, an E-Class and a KDH the business does not have).
+  `Service.startingFrom` is now `string | null`; every page shows prices when
+  present and "On request" / "call or WhatsApp for a quote" when not, with a
+  working `tel:` link. `serviceLd()` omits `offers` without a price.
+- The business JSON-LD carried `priceRange: "LKR 6,000 to LKR 30,000 per day"`,
+  worked out from the sample fleet, **on every page**. Removed until real rates
+  exist.
+
+**Age and excess:** "at least 23 years old" removed from the terms, FAQ and
+vehicle page; the one-year licence rule kept. The fixed LKR 25,000 excess is
+gone; the terms and FAQ now say the excess depends on the vehicle and is
+written on the rental agreement. The "excess published up front" line in the
+differentiators was changed to match, since it no longer is.
+
+**ID photo retention**, built rather than just promised:
+
+| Booking | Photos deleted |
+| --- | --- |
+| Returned | 90 days after the later of the booked return date and the day it was marked returned |
+| Confirmed, never started | 90 days after the booked return date |
+| Cancelled | 30 days after it was cancelled |
+| Pending, never confirmed | 30 days after the booked return date |
+| On hire | never, the car is still out |
+| Hold ticked | never, until the hold is released |
+
+- The rule is **`src/lib/panel/retention-rules.ts`**, pure, with the day counts
+  as constants. The privacy policy's clause 5 **reads those constants**, so the
+  page and the code cannot disagree.
+- `src/lib/panel/retention.ts` does the deleting: files first, then the
+  record, then one audit row as `system` (shown as "Automatic" in activity).
+  Only the photos go; the booking stays.
+- `PanelBooking` gains `idNumber`, `licenceNumber`, `closedAt`,
+  `documentsHold` and `documentsPurgedAt`, all filled by `hydrate()`. The
+  bookings screen has NIC/passport number, licence number and **Hold photos**
+  fields, says when each booking's photos will go, and explains the rule.
+  **Typing the numbers at handover is what keeps a past customer findable**
+  once the photos are gone; the form stopped collecting them as text on
+  2026-09-15. Audit lines name which field changed, never the number itself.
+- `closedAt` is stamped when a booking is marked returned or cancelled, and
+  cleared if it is reopened.
+- **Fixed a leak next to it:** deleting a booking left its ID photos on disk
+  with nothing pointing at them, so nothing would ever have deleted them. They
+  go with the booking now.
+
+> **The purge runs when the bookings screen loads**, because there is no
+> scheduler. Fine with a local store, but a rule that runs only when someone
+> opens a page stops the week nobody does. **Make it a `pg_cron` job in the
+> Supabase phase.** There is still no customer search in the panel either;
+> the ID numbers make one possible, but it is not built.
+
+**Security, found this session, all in the launch plan section 3a:**
+
+- **The repo is public.** The panel test passwords (`owner1234` and the two
+  employee ones) are in `store.ts` and `panel.md`, and a fresh deploy seeds
+  those accounts, so anyone could sign in as the owner. **Must be replaced
+  before the first deploy.** Not changed here: it needs the real accounts to
+  replace them, which is the Supabase phase or an env-var seed.
+- The owner's personal mobile was in `docs/sms.md`. Removed from the working
+  tree; **still in git history**.
+- **Uncommitted, and should stay that way until reviewed:** the 2026-09-20
+  entries here and in `sms.md` describe the developer's plan to revoke the
+  borrowed SMS sender ID if the client does not pay. The client can read a
+  public repo.
+
+**Also noted, not changed:** the panel's payment dropdown still offers "card on
+pickup" while the terms say cards are not accepted. The local dev store
+(`.data/`, gitignored) still holds sample messages and overrides from testing;
+it never deploys.
+
+**Proven, not assumed.**
+
+- **23 checks on the pure rule** via `node --experimental-strip-types`: every
+  status, the expiry-day boundary (kept the day before, deleted on the day),
+  late and early returns, the hold, Colombo day boundaries at 18:29 and 18:30
+  UTC, a leap day, and a bad date never triggering a delete.
+- **20 checks on the real purge**, real store file and real upload files, run
+  in a throwaway working directory with a guard that refuses to run anywhere
+  else: expired photos removed from disk, the record, name and ID numbers
+  kept, held, on-hire and not-yet-due photos untouched, one system audit row
+  that does not contain the ID number, a second run deleting nothing, and the
+  real `.data/panel.json` hash unchanged.
+- **On a served production build**, empty fleet: no sample vehicle name
+  anywhere (the hero's alt text names the client's real cars and is excluded
+  on purpose), the empty panel on home, `/fleet` and `/booking`, no ItemList,
+  no `priceRange`, old vehicle URLs and junk slugs **404, not 500**, no LKR
+  figure anywhere on any service page, including the RSC payload.
+- **Then with a staff-added car and three bookings injected** into the dev
+  store (restored byte for byte afterwards, hash checked): the car's page is
+  200 with a named placeholder tile and no broken image, its LKR 55 extra-km
+  rate, a rate table filled by `hydrate()`; the home page shows it with "See
+  all 1 model", Browse by type returns with only the Hatchback tile, `/booking`
+  goes back to the form; the panel shows the three new fields, "Photos will be
+  deleted on 2027-01-02" for a hire returned 2026-10-04, the hold message, and
+  the on-hire message.
+
+> **The unfailable check, again, caught this time before it counted.** A
+> verification script contained `check("...in the sitemap route list", true)`,
+> a literal `true`, the very thing the previous entry warned about. Removed,
+> and the whole script grepped for `, true)` before the final run.
+
+`tsc` clean, build passes, zero em or en dashes.
 
 ---
 

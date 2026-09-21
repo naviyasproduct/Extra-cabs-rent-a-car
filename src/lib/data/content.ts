@@ -2,8 +2,8 @@ import type {
   BookingExtra,
   Faq,
   Location,
-  Testimonial,
 } from "@/types";
+import { addressOneLine, site } from "@/lib/data/site";
 
 /* -------------------------------------------------------------------------- */
 /* Pickup / drop-off locations                                                 */
@@ -14,9 +14,11 @@ const locations: Location[] = [
     id: "loc-01",
     name: "Heiyanthuduwa office",
     type: "branch",
-    address: "653 Samurdhi Mawatha, Heiyanthuduwa",
-    hours: "Mon to Sat, 8.00 am to 8.00 pm",
-    phone: "+94 11 234 5678",
+    // Read from site.ts, never retyped: this card was still showing the old
+    // placeholder landline after site.ts had moved on.
+    address: addressOneLine,
+    hours: site.hours.office,
+    phone: site.phone,
   },
 ];
 
@@ -29,77 +31,6 @@ export const locationNames: string[] = locations.map((l) => l.name);
 
 
 /* -------------------------------------------------------------------------- */
-/* Testimonials                                                                */
-/* -------------------------------------------------------------------------- */
-
-const testimonials: Testimonial[] = [
-  {
-    id: "tst-01",
-    name: "Dilani Perera",
-    role: "Rented for a family trip",
-    location: "Colombo 05",
-    rating: 5,
-    quote:
-      "Booked the C-HR for four days to Ella. The car arrived at our gate washed and full, and when we had a question about the route the office picked up on the first ring. Nothing was added to the bill at the end.",
-    vehicle: "Toyota C-HR, 4 days",
-  },
-  {
-    id: "tst-02",
-    name: "Marcus Hoffmann",
-    role: "Visitor from Germany",
-    location: "Berlin",
-    rating: 5,
-    quote:
-      "Our flight landed two hours late at 3 am and the driver was still there with the name board, no extra charge. That alone made the whole trip start well.",
-    vehicle: "Airport transfer to Negombo",
-  },
-  {
-    id: "tst-03",
-    name: "Nuwan Jayasuriya",
-    role: "Operations manager",
-    location: "Rajagiriya",
-    rating: 5,
-    quote:
-      "We lease three vehicles from Extra for the sales team. One invoice a month, servicing handled, and a replacement car turns up the same day whenever one goes in. It replaced a lot of admin.",
-    vehicle: "Long-term lease, 3 vehicles",
-  },
-  {
-    id: "tst-04",
-    name: "Fathima Rizwan",
-    role: "Rented for a wedding",
-    location: "Dehiwala",
-    rating: 5,
-    quote:
-      "The E-Class was decorated exactly in the colours we asked for and the chauffeur had already driven the route the day before. He got us to the hotel to the minute.",
-    vehicle: "Mercedes-Benz E-Class, wedding",
-  },
-  {
-    id: "tst-05",
-    name: "Sanjeewa Bandara",
-    role: "Rented for a group tour",
-    location: "Kurunegala",
-    rating: 4,
-    quote:
-      "Ten of us in the KDH for six days around the cultural triangle. The van was comfortable, the AC held up, and our driver knew every shortcut around the afternoon traffic.",
-    vehicle: "Toyota KDH Hiace, 6 days",
-  },
-  {
-    id: "tst-06",
-    name: "Amara Silva",
-    role: "First-time renter",
-    location: "Mount Lavinia",
-    rating: 5,
-    quote:
-      "I was nervous about the deposit and the paperwork but everything was explained before I paid anything. The deposit came back to my account two days after I returned the car.",
-    vehicle: "Suzuki Wagon R, 2 days",
-  },
-];
-
-export async function getTestimonials(): Promise<Testimonial[]> {
-  return testimonials;
-}
-
-/* -------------------------------------------------------------------------- */
 /* FAQ                                                                         */
 /* -------------------------------------------------------------------------- */
 
@@ -109,7 +40,7 @@ const faqs: Faq[] = [
     category: "requirements",
     question: "What do I need to rent a car for self-drive?",
     answer:
-      "A valid Sri Lankan driving licence, or an international driving permit endorsed by the AA of Sri Lanka if you are visiting. You will also need your NIC or passport, and to be at least 23 years old with one year of driving experience. We take a copy of the documents at handover and return them with the vehicle.",
+      "A valid Sri Lankan driving licence, or an international driving permit endorsed by the AA of Sri Lanka if you are visiting. You will also need your NIC or passport, and to have held your licence for at least one year. You upload photos of your ID and licence when you book, and bring the originals to handover.",
   },
   {
     id: "faq-02",
@@ -123,21 +54,21 @@ const faqs: Faq[] = [
     category: "payment",
     question: "How much is the security deposit and when do I get it back?",
     answer:
-      "The refundable deposit runs from LKR 20,000 for a micro car to LKR 150,000 for the luxury range, and it is listed on every vehicle page. It is refunded within two working days of the vehicle being returned in the same condition.",
+      "Each vehicle has its own security deposit, shown on its page. It is paid at handover and returned within two working days of the vehicle coming back, less any extra kilometres, missing fuel, traffic fines or damage.",
   },
   {
     id: "faq-04",
     category: "payment",
     question: "Which payment methods do you accept?",
     answer:
-      "Cash, bank transfer, and all major credit and debit cards. Corporate customers on a lease are invoiced monthly on 30-day terms.",
+      "Cash or bank transfer. We do not take cards. Corporate customers on a lease are invoiced monthly on 30-day terms.",
   },
   {
     id: "faq-05",
     category: "vehicle",
     question: "Is insurance included in the price?",
     answer:
-      "Yes. Every vehicle carries comprehensive insurance in the daily rate. In an accident your liability is capped at the policy excess, which is LKR 25,000 for most of the fleet. Damage from drink-driving, driving without a valid licence or off-road use is not covered.",
+      "Yes. Every vehicle carries comprehensive insurance in the daily rate. In an accident your liability is capped at the policy excess, which depends on the vehicle and is written on your rental agreement before you drive. Damage from drink-driving, driving without a valid licence or off-road use is not covered.",
   },
   {
     id: "faq-06",
@@ -158,7 +89,7 @@ const faqs: Faq[] = [
     category: "vehicle",
     question: "Is there a kilometre limit?",
     answer:
-      "No. Every rental includes unlimited kilometres at no extra charge. Drive as far as the trip needs and the daily rate is all you pay.",
+      "Yes. Every hire includes 100 km for each day of the rental, so a three-day hire includes 300 km. Every kilometre beyond that is charged at the vehicle's extra-kilometre rate, shown on its page. We read the odometer together at handover and on return.",
   },
   {
     id: "faq-09",
@@ -172,7 +103,7 @@ const faqs: Faq[] = [
     category: "payment",
     question: "What is your cancellation policy?",
     answer:
-      "Cancel more than 48 hours before pickup and you are refunded in full. Between 48 and 24 hours we retain 25 percent. Inside 24 hours, or a no-show, the first day is charged.",
+      "Once a booking is confirmed, the rental charge is not refundable. That covers cancellations, no-shows and vehicles returned early. The security deposit is separate: it is returned after the vehicle comes back, less any deductions.",
   },
   {
     id: "faq-11",
@@ -235,13 +166,13 @@ export const bookingSteps = [
     step: "03",
     title: "Confirm and pay",
     description:
-      "We confirm within the hour. Pay the deposit by card, transfer or cash and your booking is locked in.",
+      "We confirm within the hour. Pay by cash or bank transfer and the vehicle is held for you.",
   },
   {
     step: "04",
     title: "Drive away",
     description:
-      "Collect from a branch or let us deliver to your door. Ten minutes of paperwork and the keys are yours.",
+      "Collect from our office or let us deliver to your door. Ten minutes of paperwork and the keys are yours.",
   },
 ];
 
@@ -254,7 +185,7 @@ export const differentiators = [
     icon: "shield",
     title: "Insurance in the price",
     description:
-      "Comprehensive cover on every vehicle, with the excess published up front instead of buried in the agreement.",
+      "Comprehensive cover on every vehicle, with the excess stated on your agreement before you drive, never discovered after.",
   },
   {
     icon: "tag",

@@ -127,12 +127,19 @@ export default async function PanelVehicle({
                 initialDaily={car.pricing.daily}
                 initialTiers={car.pricing.tiers}
               />
-              <div className="max-w-[16rem]">
+              <div className="grid max-w-[33rem] gap-4 sm:grid-cols-2">
                 <Field
                   label="Deposit LKR"
                   name="deposit"
                   type="number"
                   defaultValue={car.pricing.deposit}
+                />
+                {/* LKR per km beyond 100 km a day. Clear it to show "ask us". */}
+                <Field
+                  label="Extra km, LKR per km"
+                  name="extraKm"
+                  type="number"
+                  defaultValue={car.pricing.extraKm ?? ""}
                 />
               </div>
             </div>

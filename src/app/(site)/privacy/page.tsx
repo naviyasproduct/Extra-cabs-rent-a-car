@@ -2,77 +2,114 @@ import type { Metadata } from "next";
 import { PageHeader } from "@/components/layout/PageHeader";
 import { LegalBody, type LegalSection } from "@/components/common/LegalBody";
 import { addressOneLine, site } from "@/lib/data/site";
+import {
+  HIRED_RETENTION_DAYS,
+  UNHIRED_RETENTION_DAYS,
+} from "@/lib/panel/retention-rules";
 
 export const metadata: Metadata = {
   alternates: { canonical: "/privacy" },
   openGraph: { url: "/privacy" },
   title: "Privacy policy",
   description:
-    "What personal information Extra Cabs & Rent a Cars collects, why we collect it, how long we keep it and who we share it with.",
+    "What personal information Extra Cabs & Rent a Cars collects, including identity and licence documents, why we need it, who sees it and your rights under Sri Lankan law.",
 };
 
 /**
- * PLACEHOLDER COPY. Realistic starting point for the demo - have it reviewed
- * before the site goes live.
+ * Written 2026-09-21 to describe what the system ACTUALLY does, checked
+ * against the code rather than assumed. If any of these change, this page is
+ * wrong until it is updated:
+ *
+ *   - The booking form collects name, two phone numbers, email, dates, the
+ *     pickup choice, the driver option, notes, and photos of an NIC or
+ *     passport plus a driving licence (BookingForm, lib/panel/uploads.ts).
+ *   - The contact form collects name, email, phone, subject and message.
+ *   - Every booking texts the customer's name, phone number, vehicle and dates
+ *     to staff through an SMS gateway (lib/sms/notify.ts).
+ *   - There is NO analytics on the site. The earlier draft claimed there was.
+ *     Add a clause before adding any.
+ *   - The public site sets no cookies of its own. The Google Maps frame in
+ *     the footer is Google's, and can set Google's.
+ *   - ID photos are deleted on the schedule in lib/panel/retention-rules.ts,
+ *     whose day counts clause 5 reads directly, so the page and the code
+ *     cannot disagree. The deleting itself runs from the panel's bookings
+ *     screen until there is a scheduler (see retention.ts).
+ *
+ * NOT REVIEWED BY A LAWYER. Sri Lanka's Personal Data Protection Act No. 9 of
+ * 2022 applies.
  */
 const sections: LegalSection[] = [
   {
-    id: "what-we-collect",
-    heading: "1. What we collect",
+    id: "who-we-are",
+    heading: "1. Who we are",
     paragraphs: [
-      "We collect only what we need to rent you a vehicle and to meet our obligations as a vehicle owner.",
+      `${site.legalName} ("we", "us") of ${addressOneLine} is responsible for the personal information described here. You can reach us at ${site.email} or on ${site.phone}.`,
+    ],
+  },
+  {
+    id: "what-we-collect",
+    heading: "2. What we collect",
+    paragraphs: [
+      "We collect only what we need to rent you a vehicle and to meet our obligations as the owner of that vehicle.",
     ],
     list: [
-      "Your name, phone number and email address",
-      "Your NIC or passport number and a copy of your driving licence",
-      "Booking details: dates, locations, vehicle and any extras",
-      "Payment records, though card numbers are handled by our payment provider and never stored by us",
-      "Basic website analytics such as pages viewed and approximate location",
+      "Your name, email address, a phone number and a WhatsApp number",
+      "Your booking: the vehicle, dates, pickup or delivery choice, whether you want a driver, and any notes you add",
+      "Photos of your NIC (front and back) or passport photo page, and of your driving licence (front and back)",
+      "Your NIC or passport number and driving licence number, which our staff note at handover",
+      "What you write to us through the contact form or by message",
+      "Payment records: what you paid, when and how. We do not take cards, so we hold no card details",
     ],
   },
   {
     id: "why",
-    heading: "2. Why we collect it",
+    heading: "3. Why we collect it",
     paragraphs: [
-      "Identity and licence details are collected because the law requires a vehicle owner to know who is driving. Contact details are used to confirm bookings, arrange handovers and reach you during a rental.",
-      "We do not sell personal information, and we do not share it for advertising purposes.",
+      "Identity and licence documents are collected because a vehicle owner must know who is driving, and because our insurance depends on every driver holding a valid licence. Contact details are used to confirm your booking, arrange handover and reach you during the rental.",
+      "We do not sell personal information, and we do not use it for advertising.",
     ],
   },
   {
     id: "sharing",
-    heading: "3. Who we share it with",
+    heading: "4. Who sees it",
     paragraphs: [
-      "We share personal information only where it is necessary: with our insurer when a claim is made, with the police or courts where we are legally required to, and with our payment provider to process a transaction.",
-      "Our drivers see only the details they need for your booking: your name, phone number, pickup point and destination.",
+      "Your documents are stored privately. They are never published and can only be opened by our staff, who must sign in to see them.",
+      "When you book, your name, phone number, the vehicle and your dates are sent by text message to our staff so someone can confirm quickly. That message goes through an SMS provider.",
+      "We also share information where we must: with our insurer when a claim is made, and with the police or courts where the law requires it.",
+      "Our website and records are held by service providers who host and store them for us. Some of these providers may store data on servers outside Sri Lanka.",
     ],
   },
   {
     id: "retention",
-    heading: "4. How long we keep it",
+    heading: "5. How long we keep it",
     paragraphs: [
-      "Rental agreements and the identity documents attached to them are kept for seven years, which is the period we are required to be able to produce them for.",
-      "Booking enquiries that do not result in a rental are deleted after twelve months. Marketing contacts are removed as soon as you ask.",
+      `Photos of your ID and licence are deleted ${HIRED_RETENTION_DAYS} days after your rental ends. If a booking never becomes a rental, they are deleted ${UNHIRED_RETENTION_DAYS} days after it closes.`,
+      "The one exception: if a traffic fine, a damage claim or a dispute about the rental is still open, we keep the photos until it is settled, then delete them.",
+      "We keep the booking record itself, including your name, contact details, the rental dates and vehicle, and your ID and licence numbers. This lets us recognise returning customers, answer questions about a past rental, and deal with claims that arrive late. It does not include the photos.",
+      "Contact-form messages are deleted once they are no longer needed.",
     ],
   },
   {
     id: "your-rights",
-    heading: "5. Your rights",
+    heading: "6. Your rights",
     paragraphs: [
-      "You can ask us what we hold about you, ask for a correction, or ask us to delete anything we are not legally required to keep. Write to us and we will respond within thirty days.",
+      "Under Sri Lanka's Personal Data Protection Act No. 9 of 2022 you can ask us what we hold about you, ask us to correct it, ask us to delete anything we are not required to keep, withdraw your consent, and object to how we use it.",
+      `Write to ${site.email} and tell us what you would like. We may ask you to confirm who you are before we act, so that nobody else can see or change your information.`,
     ],
   },
   {
     id: "cookies",
-    heading: "6. Cookies",
+    heading: "7. Cookies",
     paragraphs: [
-      "This site uses a small number of cookies to remember your preferences and to measure how many people visit which pages. None of them track you across other websites, and none are used for advertising.",
+      "This website does not set cookies of its own for visitors, and does not use analytics or advertising trackers.",
+      "The map at the bottom of each page is provided by Google Maps. When it loads, Google may set its own cookies and collect information under Google's privacy policy.",
     ],
   },
   {
-    id: "contact",
-    heading: "7. Contacting us about privacy",
+    id: "changes",
+    heading: "8. Changes to this policy",
     paragraphs: [
-      `Questions about this policy can go to ${site.email}, or by post to ${addressOneLine}.`,
+      "If we change what we collect or how we use it, we will update this page before the change takes effect, and the date at the top will change with it.",
     ],
   },
 ];
@@ -90,7 +127,7 @@ export default function PrivacyPage() {
             <p className="text-sm uppercase tracking-[0.16em] text-muted">
               Last updated
             </p>
-            <p className="mt-1 font-display text-xl font-bold">1 September 2026</p>
+            <p className="mt-1 font-display text-xl font-bold">21 September 2026</p>
             <p className="mt-4 text-sm leading-relaxed text-muted">
               We will post any change here before it takes effect.
             </p>

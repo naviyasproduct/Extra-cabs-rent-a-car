@@ -153,6 +153,13 @@ function hydrate(data: PanelData): PanelData {
     booking.whatsapp ??= "";
     booking.idType ??= "nic";
     booking.documents ??= [];
+    // Retention fields, 2026-09-21. A booking already returned or cancelled
+    // before then has no closedAt; retention-rules falls back to its dates.
+    booking.idNumber ??= "";
+    booking.licenceNumber ??= "";
+    booking.closedAt ??= null;
+    booking.documentsHold ??= false;
+    booking.documentsPurgedAt ??= null;
   }
 
   for (const staff of data.staff) {
@@ -170,6 +177,10 @@ function hydrate(data: PanelData): PanelData {
       vehicle.hybrid = true;
     }
     vehicle.hybrid ??= false;
+    // The extra-kilometre rate arrived with the 100 km a day limit
+    // (2026-09-21). A vehicle added before then has no rate, which is null,
+    // not undefined: undefined would slip past the price card's "ask us".
+    vehicle.extraKm ??= null;
 
     // Weekly and monthly were single totals before the rate table. A stored
     // figure becomes that tier's per-day rate so nothing the owner typed is

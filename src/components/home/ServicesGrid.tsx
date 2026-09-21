@@ -55,8 +55,12 @@ export async function ServicesGrid() {
 
             <div className="mt-10 flex items-end justify-between gap-4">
               <div>
-                <p className="text-sm uppercase tracking-[0.16em] text-muted">Starting from</p>
-                <p className="mt-1 font-display text-2xl font-bold">{lead.startingFrom}</p>
+                <p className="text-sm uppercase tracking-[0.16em] text-muted">
+                  {lead.startingFrom ? "Starting from" : "Rates"}
+                </p>
+                <p className="mt-1 font-display text-2xl font-bold">
+                  {lead.startingFrom ?? "Quoted for your trip"}
+                </p>
               </div>
               <span className="grid size-12 shrink-0 place-items-center rounded-full bg-field transition-colors group-hover:bg-brand">
                 <ArrowUpRight className="size-5" aria-hidden />
@@ -81,7 +85,7 @@ export async function ServicesGrid() {
                 {service.tagline}
               </p>
               <p className="mt-6 font-display text-sm font-semibold uppercase tracking-[0.08em] text-brand-bright">
-                From {service.startingFrom}
+                {service.startingFrom ? `From ${service.startingFrom}` : "Ask for a quote"}
               </p>
             </Link>
           ))}

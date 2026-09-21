@@ -54,6 +54,10 @@ function applyOverride(car: Car, override: VehicleOverride | undefined): Car {
       // inherits the rest from the catalogue.
       tiers: { ...car.pricing.tiers, ...override.tiers },
       deposit: override.deposit ?? car.pricing.deposit,
+      // undefined means "not overridden"; null is a real value meaning the
+      // owner cleared the rate. Same rule as withDriverDaily below.
+      extraKm:
+        override.extraKm !== undefined ? override.extraKm : car.pricing.extraKm,
       withDriverDaily:
         override.withDriverDaily !== undefined
           ? override.withDriverDaily
@@ -86,12 +90,11 @@ function createdToCar(vehicle: CreatedVehicle): Car {
       daily: vehicle.daily,
       tiers: vehicle.tiers,
       deposit: vehicle.deposit,
+      extraKm: vehicle.extraKm ?? null,
       withDriverDaily: vehicle.withDriverDaily,
     },
     features: vehicle.features.slice(0, MAX_VEHICLE_FEATURES),
     images: vehicle.images.slice(0, MAX_VEHICLE_IMAGES),
-    rating: 0,
-    reviewCount: 0,
     available: vehicle.available,
     featured: vehicle.featured,
   };

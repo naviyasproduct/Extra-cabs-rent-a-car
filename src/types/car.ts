@@ -53,6 +53,12 @@ export interface CarPricing {
   tiers: RateTiers;
   /** Refundable security deposit held during the rental. */
   deposit: number;
+  /**
+   * LKR charged for each kilometre beyond the allowance (KM_PER_DAY in
+   * lib/pricing.ts, times the hire days). Null means no rate has been set yet:
+   * the vehicle page then says to ask, rather than inventing a figure.
+   */
+  extraKm: number | null;
   /** Hourly rate with a driver, null when the car is self-drive only. */
   withDriverDaily: number | null;
 }
@@ -87,8 +93,6 @@ export interface Car {
    * At most MAX_VEHICLE_IMAGES entries; anything beyond that is ignored.
    */
   images: string[];
-  rating: number;
-  reviewCount: number;
   available: boolean;
   featured: boolean;
   /** Marketing flag: "Popular", "New in fleet", etc. */

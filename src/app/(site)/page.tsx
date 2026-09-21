@@ -5,7 +5,6 @@ import { ServicesGrid } from "@/components/home/ServicesGrid";
 import { FeaturedFleet, SHOWCASE_COUNT } from "@/components/home/FeaturedFleet";
 import { HowItWorks } from "@/components/home/HowItWorks";
 import { WhyUs } from "@/components/home/WhyUs";
-import { Testimonials } from "@/components/home/Testimonials";
 import { FaqPreview } from "@/components/home/FaqPreview";
 import { JsonLd } from "@/components/common/JsonLd";
 import { itemListLd } from "@/lib/seo";
@@ -21,16 +20,19 @@ export default async function HomePage() {
 
   return (
     <>
-      <JsonLd
-        data={itemListLd(
-          "Vehicles available to rent",
-          "/",
-          showcase.map((car) => ({
-            name: car.name,
-            path: `/fleet/${car.slug}`,
-          })),
-        )}
-      />
+      {/* An empty ItemList tells search engines the page lists nothing. */}
+      {showcase.length > 0 ? (
+        <JsonLd
+          data={itemListLd(
+            "Vehicles available to rent",
+            "/",
+            showcase.map((car) => ({
+              name: car.name,
+              path: `/fleet/${car.slug}`,
+            })),
+          )}
+        />
+      ) : null}
 
       <Hero />
       <FeaturedFleet />
@@ -38,7 +40,6 @@ export default async function HomePage() {
       <ServicesGrid />
       <HowItWorks />
       <WhyUs />
-      <Testimonials />
       <FaqPreview />
     </>
   );

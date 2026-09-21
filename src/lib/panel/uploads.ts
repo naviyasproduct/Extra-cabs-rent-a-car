@@ -175,6 +175,30 @@ export function readDocument(
   return null;
 }
 
+/**
+ * Deletes a stored document for good. Returns true when something was
+ * removed. Used by the retention rule and when a booking is deleted, so no
+ * identity photo outlives the record that explains why we had it.
+ */
+export function deleteDocument(id: string): boolean {
+  // Same guard as readDocument: prove the id safe before it touches a path.
+  if (!/^[0-9a-f]{32}$/.test(id)) return false;
+
+  let removed = memory.delete(id);
+  try {
+    for (const ext of Object.values(ACCEPTED)) {
+      const candidate = path.join(UPLOAD_DIR, `${id}.${ext}`);
+      if (fs.existsSync(candidate)) {
+        fs.unlinkSync(candidate);
+        removed = true;
+      }
+    }
+  } catch {
+    // Unwritable disk. Report what we managed rather than throwing.
+  }
+  return removed;
+}
+
 /** Human label for a slot, used in the panel and in the form. */
 export const slotLabels: Record<DocumentSlot, string> = {
   "nic-front": "NIC, front",

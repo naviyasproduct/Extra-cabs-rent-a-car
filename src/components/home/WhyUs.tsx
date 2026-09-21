@@ -1,42 +1,19 @@
 import { Grid, Section, Shell } from "@/components/ui/Layout";
 import { Icon } from "@/components/ui/Icon";
 import { differentiators } from "@/lib/data/content";
-import { site } from "@/lib/data/site";
 
 /**
  * Dark band.
  *
- * The stats slab is pulled up so it sits half on the light section above and
- * half on the dark one below - the seam between the two bands runs straight
- * through it, which is what welds the two together.
+ * There used to be a stats slab here ("12k+ completed rentals", "4.8/5
+ * average rating") straddling the seam with the section above. The figures
+ * were invented, so it was removed on 2026-09-21. Do not bring it back
+ * without numbers the client can stand behind.
  */
 export function WhyUs() {
   return (
     <Section band="dark" spacing="flush">
-      {/* flow-root establishes a block formatting context so the slab's
-          negative margin overlaps the band above instead of collapsing
-          through and dragging the whole section up with it. */}
-      <Shell className="flow-root">
-        {/* Stats slab straddling the seam */}
-        <div className="overlap-up grid grid-cols-2 gap-px overflow-hidden rounded-(--radius-shell) bg-line lg:grid-cols-4">
-          {site.stats.map((stat) => (
-            // text-ink is explicit: the cells sit inside a dark band that sets
-            // text-white, which would otherwise make the figures invisible.
-            <div
-              key={stat.label}
-              className="bg-surface px-6 py-8 text-center text-ink lg:py-10"
-            >
-              <p className="font-display text-4xl font-extrabold leading-none lg:text-5xl">
-                {stat.value}
-                <span className="text-brand-bright">{stat.suffix}</span>
-              </p>
-              <p className="mx-auto mt-3 max-w-[18ch] text-sm leading-snug text-muted">
-                {stat.label}
-              </p>
-            </div>
-          ))}
-        </div>
-
+      <Shell>
         <div className="pb-(--section-y) pt-(--section-y)">
           <Grid>
             <div className="col-span-4 md:col-span-8 lg:col-span-4">

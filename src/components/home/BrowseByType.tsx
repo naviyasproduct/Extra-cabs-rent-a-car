@@ -15,6 +15,10 @@ import { publicCategoryCounts } from "@/lib/fleet";
 export async function BrowseByType() {
   const counts = await publicCategoryCounts();
 
+  // Nothing to browse yet: a wall of "0 vehicles" tiles says the business
+  // has no cars. The fleet section above already says what to do instead.
+  if ((counts.all ?? 0) === 0) return null;
+
   const tiles = [
     { key: "all", label: "All vehicles", href: "/fleet", count: counts.all ?? 0 },
     ...categoryOrder.map((category) => ({
@@ -22,7 +26,10 @@ export async function BrowseByType() {
       label: categoryLabels[category],
       href: `/fleet?category=${category}`,
       count: counts[category] ?? 0,
-    })),
+    }))
+      // Only types the fleet actually has. A small real fleet leaves most
+      // categories empty, and each empty tile is a link to an empty page.
+      .filter((tile) => tile.count > 0),
   ];
 
   return (

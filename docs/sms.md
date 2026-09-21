@@ -6,14 +6,19 @@ until the two credentials below are filled in.
 
 Provider: **Text.lk**. API docs: <https://text.lk/docs/send-sms/>
 
-> **Local state, 2026-09-08.** `.env.local` holds a real API token and
-> `TEXTLK_SENDER_ID=TextLKDemo`, Text.lk's sandbox sender, because our own
-> sender ID is not approved yet. A live booking was sent through it and Text.lk
-> accepted it (uid `6a9ff544532c1`). **`TextLKDemo` cannot be used for real
-> traffic**, so an approved sender ID is still needed before launch: request it
-> under Sending, Sender ID.
+> **Local state, 2026-09-20.** `.env.local` holds a real API token and
+> `TEXTLK_SENDER_ID=zsensu.com`, an **approved** sender ID, so real traffic
+> works. Read section 2b before touching it: that sender ID belongs to the
+> developer, not to the agency.
 >
-> The owner's number, `076 974 7099`, is set on his account in
+> **Credit is low. 4 units as of 2026-09-20, no top-up yet.** One booking
+> spends one unit per staff member with a number saved, and the **Send a test**
+> button on `/panel/team` spends one per press with no confirmation step. Do
+> not test against the live gateway without checking the balance first
+> (section 6), or blank `TEXTLK_API_TOKEN` and test with nothing sent
+> (section 5).
+>
+> The owner's mobile number is set on his account in
 > `.data/panel.json`. That file is gitignored and **the number is deliberately
 > not in `store.ts`**, so it is never committed. Deleting the store to reset it
 > loses the number; re-type it in `/panel/team`.
@@ -62,14 +67,39 @@ This is the name the text appears to come from, and it is the one step with a
 lead time. In the dashboard: **Sending, then Sender ID**, and request a new
 one.
 
-- Maximum **11 characters**, letters and digits, no spaces. `ExtraCabs` fits.
+- Maximum **11 characters**, no spaces. A dot is accepted: `zsensu.com` is 10.
 - Text.lk quote a few hours to 1 business day, occasionally up to 3. They also
   offer fast-track approval at no extra cost if you ask.
+- Registering one requires the **business registration or the NIC** of whoever
+  the name belongs to.
 - `TextLKDemo` is their sandbox sender. It works for testing and **cannot be
   used for real traffic**.
 
-Until your own sender ID is approved, put `TextLKDemo` in the env file and test
-with that.
+#### The sender ID in use is the developer's, and it is borrowed
+
+Texts currently go out as **`zsensu.com`**, which is the developer's own
+approved sender ID, on the developer's own Text.lk account. It is **not**
+registered to Extra Cabs, because the agency did not supply a business
+registration or an NIC to register one with.
+
+What follows from that, and all of it is deliberate:
+
+- Customers and staff see `zsensu.com` as the sender, not `ExtraCabs`. Anyone
+  showing this to the client should say so rather than let it be discovered in
+  a received text.
+- **The credit spent is the developer's**, not the agency's.
+- Access can be withdrawn by rotating the token in the Text.lk dashboard. That
+  kills sending immediately; the app records every attempt as `failed` and the
+  booking itself still saves, so nothing else breaks.
+- **The token is the whole lock.** Anyone who can read `.env.local`, or open
+  the Vercel project's Environment Variables, can copy it and keep sending
+  after it is meant to be revoked. If handover of the Vercel project happens
+  before payment, rotate the token first.
+
+To move onto the agency's own sender ID later: get their BR or NIC, register
+`ExtraCabs` (or whatever they want) on **their** Text.lk account, and change
+`TEXTLK_API_TOKEN` and `TEXTLK_SENDER_ID`. No code changes, both are read from
+the environment at process start.
 
 ### c. Put some credit on the account
 
@@ -85,7 +115,7 @@ Local development: `.env.local` in the repo root. It is gitignored, and
 
 ```
 TEXTLK_API_TOKEN=the-token-you-just-copied
-TEXTLK_SENDER_ID=ExtraCabs
+TEXTLK_SENDER_ID=zsensu.com
 SMS_ENABLED=true
 ```
 
@@ -113,7 +143,9 @@ the owner included.
   a valid Sri Lankan one is rejected on save rather than failing silently later.
 - **Turn alerts off** stops texting one person without deleting their number.
 - **Send a test** sends one real message to that number, now, and shows the
-  result underneath. Use it the moment a number is added.
+  result underneath. Use it the moment a number is added. **It spends a credit
+  on every press and asks for no confirmation**, so treat it as live while the
+  balance is low.
 - Clearing the box stops texting that person entirely.
 - A disabled account never gets alerts.
 

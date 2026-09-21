@@ -10,6 +10,13 @@ import { absoluteUrl } from "@/lib/seo";
  * Priorities are relative, not absolute: the fleet and booking routes are where
  * rentals actually start, so they rank above the legal pages.
  */
+/**
+ * Regenerated at most once an hour. The fleet is added by staff after launch,
+ * so a sitemap frozen at build time would never list a single vehicle. Found
+ * 2026-09-21; it was static (built once) until then.
+ */
+export const revalidate = 3600;
+
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const lastModified = new Date();
 
