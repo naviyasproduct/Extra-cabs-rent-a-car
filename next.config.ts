@@ -10,9 +10,14 @@ const nextConfig: NextConfig = {
       // saveDocument() ever ran, with an error the customer cannot act on.
       //
       // 10mb leaves room above the 8MB cap in lib/panel/uploads.ts for the
-      // boundaries and part headers multipart/form-data adds. The real limit
-      // is the one in uploads.ts, which refuses the file with a sentence
-      // explaining why; this only has to be the larger of the two.
+      // boundaries and part headers multipart/form-data adds.
+      //
+      // BUT THIS IS NOT THE BINDING LIMIT IN PRODUCTION. A Vercel function
+      // accepts a request body of 4.5MB and answers 413
+      // FUNCTION_PAYLOAD_TOO_LARGE above it, and no setting here can raise a
+      // platform limit. Anything that must carry a real photograph therefore
+      // uploads from the browser straight to the store instead of passing
+      // through a server action: see lib/panel/vehicle-media.ts.
       bodySizeLimit: "10mb",
     },
   },

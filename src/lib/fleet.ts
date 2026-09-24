@@ -1,7 +1,7 @@
 import "server-only";
 import { connection } from "next/server";
 import type { Car, CarCategory } from "@/types";
-import { MAX_VEHICLE_FEATURES, MAX_VEHICLE_IMAGES } from "@/types";
+import { MAX_VEHICLE_FEATURES, MAX_VEHICLE_IMAGES, MAX_VEHICLE_VIDEOS } from "@/types";
 import { listVehicleRecords, getVehicleRecord } from "@/lib/panel/db";
 import type { VehicleRecord } from "@/lib/panel/types";
 
@@ -53,6 +53,7 @@ function recordToCar(vehicle: VehicleRecord): Car {
     },
     features: vehicle.features.slice(0, MAX_VEHICLE_FEATURES),
     images: vehicle.images.slice(0, MAX_VEHICLE_IMAGES),
+    videos: (vehicle.videos ?? []).slice(0, MAX_VEHICLE_VIDEOS),
     available: vehicle.available,
     featured: vehicle.featured,
   };

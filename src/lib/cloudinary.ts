@@ -3,7 +3,7 @@
  *
  * PURE and client-safe: no secrets, no node built-ins. The cloud name is
  * public by design (it is in every delivery URL). Uploading and deleting need
- * the API secret and live in src/lib/panel/vehicle-photos.ts, server only.
+ * the API secret and live in src/lib/panel/vehicle-media.ts, server only.
  *
  * Vehicle photos are stored as Cloudinary **public ids**, not URLs, so the
  * delivery options (format, quality, width) can change here without rewriting
@@ -64,5 +64,64 @@ export function cloudinaryUrl(publicId: string, options: DeliveryOptions = {}): 
   return `https://res.cloudinary.com/${cloud}/image/upload/${transforms}/${publicId}`;
 }
 
-/** The folder every vehicle photo is uploaded into. */
+/** The folder every vehicle photo and video is uploaded into. */
 export const VEHICLE_FOLDER = "extra-cabs/vehicles";
+
+/**
+ * Where the add form puts media, since the vehicle has no slug until it is
+ * saved. The folder is cosmetic (the public id is what gets stored), but it
+ * is what lets the orphan sweep find files from a form somebody abandoned.
+ */
+export const PENDING_FOLDER = `${VEHICLE_FOLDER}/_new`;
+
+/** Cloudinary keeps images and videos in separate resource types. */
+export type MediaKind = "image" | "video";
+
+/**
+ * The poster frame for a video, delivered as an ordinary image.
+ *
+ * This is what makes a video on the page cost almost nothing: the `<video>`
+ * element is given `preload="none"` and this poster, so a visitor who never
+ * presses play downloads one small JPEG instead of tens of megabytes.
+ *
+ * `so_0` takes the frame at zero seconds. Cloudinary can pick a frame itself
+ * with `so_auto`, which is not on every plan, and a first frame chosen by the
+ * person who filmed the car is a reasonable one.
+ */
+export function cloudinaryPosterUrl(publicId: string, options: DeliveryOptions = {}): string {
+  const cloud = cloudName();
+  if (!cloud) return "";
+
+  const transforms = [
+    "so_0",
+    "f_auto",
+    options.quality ? `q_${options.quality}` : "q_auto",
+    ...(options.width ? [`w_${Math.round(options.width)}`, "c_limit"] : []),
+  ].join(",");
+
+  return `https://res.cloudinary.com/${cloud}/video/upload/${transforms}/${publicId}.jpg`;
+}
+
+/**
+ * The playable file for a stored video public id.
+ *
+ * `vc_auto` lets Cloudinary pick the codec and `q_auto` the bitrate, so a
+ * phone clip filmed at 4K is re-encoded once and then served small. `c_limit`
+ * with a width caps the resolution without ever scaling a smaller clip up.
+ *
+ * Delivered as MP4 rather than as two `<source>` elements: every browser in
+ * use plays H.264 MP4, and a second format would double what Cloudinary has
+ * to store and transform for no visitor who could not already watch it.
+ */
+export function cloudinaryVideoUrl(publicId: string, options: DeliveryOptions = {}): string {
+  const cloud = cloudName();
+  if (!cloud) return "";
+
+  const transforms = [
+    "vc_auto",
+    options.quality ? `q_${options.quality}` : "q_auto",
+    ...(options.width ? [`w_${Math.round(options.width)}`, "c_limit"] : []),
+  ].join(",");
+
+  return `https://res.cloudinary.com/${cloud}/video/upload/${transforms}/${publicId}.mp4`;
+}

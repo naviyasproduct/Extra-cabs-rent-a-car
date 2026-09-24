@@ -83,39 +83,86 @@ export type SaveResult =
   | { ok: true; document: UploadedDocument }
   | { ok: false; error: string };
 
-export async function saveDocument(file: File, slot: DocumentSlot): Promise<SaveResult> {
+/**
+ * Step one: hands the browser a URL it can upload one file to, directly.
+ *
+ * **The file must not pass through this server.** A Vercel function accepts a
+ * request body of 4.5MB and answers 413 above it, and a phone photograph of an
+ * NIC is routinely 3 to 8MB. Sending it through a server action therefore
+ * failed in production for exactly the customers who did as they were asked,
+ * with an error they could do nothing about.
+ *
+ * The id is generated HERE, never taken from the caller, so nobody can aim an
+ * upload at an existing object and overwrite somebody else's document.
+ */
+export async function documentUploadTicket(
+  slot: DocumentSlot,
+): Promise<{ ok: true; id: string; url: string } | { ok: false; error: string }> {
   if (!VALID_SLOTS.includes(slot)) {
     return { ok: false, error: "Unknown document type." };
   }
-  if (file.size === 0) {
-    return { ok: false, error: "That file is empty." };
+
+  const id = crypto.randomBytes(16).toString("hex");
+  const { data, error } = await admin()
+    .storage.from(ID_DOCUMENTS_BUCKET)
+    .createSignedUploadUrl(id);
+
+  if (error || !data) {
+    console.error(`[uploads] could not sign an upload for ${slot}: ${error?.message}`);
+    return { ok: false, error: "Uploads are unavailable right now. Try again in a moment." };
   }
-  if (file.size > MAX_UPLOAD_BYTES) {
-    return {
-      ok: false,
-      error: `That file is ${(file.size / 1024 / 1024).toFixed(1)}MB. The limit is 8MB.`,
-    };
+  return { ok: true, id, url: data.signedUrl };
+}
+
+/**
+ * Step two: checks what actually landed, and destroys it if it is not what it
+ * claims to be.
+ *
+ * This is where the magic number check moved to. It used to run before the
+ * bytes were stored; it now runs seconds after, and a file that fails is
+ * deleted immediately. The bucket is private with no policies, so a file that
+ * exists for those seconds is readable by nobody: not the uploader, not a
+ * visitor, only the service role.
+ *
+ * The bucket enforces its own 8MB cap and MIME allowlist on the way in, but
+ * that list is checked against the type the browser DECLARED. This is the
+ * check against the bytes themselves.
+ */
+export async function confirmDocument(
+  id: string,
+  slot: DocumentSlot,
+  fileName: string,
+): Promise<SaveResult> {
+  if (!ID_PATTERN.test(id)) return { ok: false, error: "That upload did not go through. Try again." };
+  if (!VALID_SLOTS.includes(slot)) return { ok: false, error: "Unknown document type." };
+
+  const store = admin().storage.from(ID_DOCUMENTS_BUCKET);
+  const { data, error } = await store.download(id);
+  if (error || !data) {
+    return { ok: false, error: "That upload did not arrive. Try again." };
   }
 
-  const bytes = Buffer.from(await file.arrayBuffer());
+  const bytes = Buffer.from(await data.arrayBuffer());
+  const destroy = async (message: string): Promise<SaveResult> => {
+    await store.remove([id]);
+    return { ok: false, error: message };
+  };
 
-  // Re-check the size against what actually arrived, not only what was declared.
+  if (bytes.length === 0) return destroy("That file is empty.");
   if (bytes.length > MAX_UPLOAD_BYTES) {
-    return { ok: false, error: "That file is too large. The limit is 8MB." };
+    return destroy(`That file is ${(bytes.length / 1024 / 1024).toFixed(1)}MB. The limit is 8MB.`);
   }
 
   const contentType = sniff(bytes);
   if (!contentType || !ACCEPTED.has(contentType)) {
-    return { ok: false, error: "Use a photo (JPG, PNG, WEBP or HEIC) or a PDF." };
+    return destroy("Use a photo (JPG, PNG, WEBP or HEIC) or a PDF.");
   }
 
-  const id = crypto.randomBytes(16).toString("hex");
-  const { error } = await admin()
-    .storage.from(ID_DOCUMENTS_BUCKET)
-    .upload(id, bytes, { contentType, upsert: false, cacheControl: "0" });
-  if (error) {
-    console.error(`[uploads] storing ${slot} failed: ${error.message}`);
-    return { ok: false, error: "That upload did not go through. Try again." };
+  // Stored under the type the browser declared, which may not be the type the
+  // bytes are. Rewriting it keeps what staff are served matching what the file
+  // actually is. Normally this does not run at all.
+  if (data.type !== contentType) {
+    await store.upload(id, bytes, { contentType, upsert: true, cacheControl: "0" });
   }
 
   return {
@@ -123,7 +170,7 @@ export async function saveDocument(file: File, slot: DocumentSlot): Promise<Save
     document: {
       id,
       slot,
-      fileName: safeName(file.name),
+      fileName: safeName(fileName),
       contentType,
       size: bytes.length,
       uploadedAt: new Date().toISOString(),

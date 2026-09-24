@@ -3037,6 +3037,174 @@ rather than tagging everything.
 
 ---
 
+### 2026-09-24 (media) - Photos on the add form, video, and the 4.5MB wall
+
+Client: there is no way to add images when adding a vehicle, can we have
+videos too, and both must load fast and be good for search.
+
+The first part was true and worse than it looked. **The add form had no photo
+field at all** and `createVehicleAction` hardcoded `images: []`, so a staff
+member adding a car had nowhere to put pictures and had to find the photo grid
+further down the edit screen afterwards. The rest of this entry is the reason
+that could not simply be copied across.
+
+> ### The wall everything hit, and it was invisible on a laptop
+>
+> **A Vercel function may receive a request body of 4.5MB.** Above it the
+> platform answers 413 `FUNCTION_PAYLOAD_TOO_LARGE`, and
+> `experimental.serverActions.bodySizeLimit` in `next.config.ts` **cannot raise
+> it**: that setting governs Next, not the platform underneath. Verified in
+> Vercel's own limits documentation, not remembered.
+>
+> Every upload in this project went through a server action, so:
+>
+> - **vehicle photographs** were capped at 10MB by our own code and at 4.5MB by
+>   the platform, and a phone photograph of a car is routinely 3 to 8MB,
+> - **customer NIC, passport and licence photographs** were capped at 8MB by
+>   our code and 4.5MB by the platform, on the booking form, **for customers**,
+> - a video was never going to be possible at all.
+>
+> None of this shows in `next dev` or on a laptop, where the same code path
+> works perfectly. It shows in production, to the people least able to report
+> it.
+
+**Everything now uploads from the browser straight to where it is stored**, and
+the server signs the request and checks what landed. That is not an
+optimisation, it is the only thing that works, and it is faster besides: the
+bytes go once, to a CDN near the person uploading, instead of twice through
+Mumbai.
+
+**Vehicle photographs and video** (`src/lib/panel/vehicle-media.ts`, replacing
+`vehicle-photos.ts`)
+
+- `uploadTicket(slug, kind)` signs a short-lived ticket pinned to one folder
+  and one set of formats. **Signed, never an unsigned upload preset:** a preset
+  lets anyone who reads the page JavaScript upload into the account.
+- `verifyUpload()` checks the signature Cloudinary returns over `public_id` and
+  `version` before any id reaches the database. The browser reports what it
+  uploaded and a browser can say anything; without this the attach action would
+  record any id anybody typed. The public id must also sit under the vehicle
+  folder, so a valid signature for somebody else's asset is still refused.
+- `MediaUploader` (client) uploads with XMLHttpRequest for real progress, which
+  matters when a 60MB video is going up a Sri Lankan mobile connection.
+- **Photos are on the add form**, several at once, uploading as they are
+  picked. The vehicle does not exist yet, so they go to
+  `extra-cabs/vehicles/_new` and ride along as hidden fields;
+  `createVehicleAction` verifies every one before storing it.
+- Up to **five photos and two videos**. Videos have their own column.
+- **Videos have their own permission by inheritance:** both use `fleet.photos`,
+  so an employee can be trusted with pictures without being handed the rates.
+
+**Why the video column is jsonb and not text[]**
+
+Each entry is `{"id": ..., "uploadedAt": ...}`. **Google will not treat a
+`VideoObject` as a video without `uploadDate`**, and nothing about a Cloudinary
+public id says when it arrived, so a bare list of ids would have put a video on
+the page that search engines could see and never rank. The date is stamped when
+the video is attached. Migration `20260924020000_vehicle_videos.sql`, pushed.
+
+**What a video costs a visitor: 6.2KB, measured**
+
+- The `<video>` element **does not exist on the page** until the visitor clicks
+  the video thumbnail. What ships is one lazy poster frame.
+- That poster is a Cloudinary transform of the video itself
+  (`so_0,f_auto,q_auto`), so there is no second file to upload or keep in step.
+- Clicking the thumbnail both selects and plays it, so it is one click, not
+  two. Nothing autoplays on arrival.
+- Delivery is `vc_auto,q_auto,w_1280,c_limit` as MP4. Every browser in use
+  plays H.264 MP4, and a second format would double storage for no viewer who
+  could not already watch.
+- Measured on the live account: a **16.3KB poster against a 900KB video**, and
+  **6.2KB** for the poster as actually served on the page.
+
+**Customer ID documents, same fix, and this one was a live bug**
+
+`documentUploadTicket()` signs a one-off Supabase Storage upload URL and
+`confirmDocument()` then **downloads what landed, checks its magic numbers, and
+deletes it on the spot if it is not a photograph or a PDF**. The magic number
+check did not go away; it moved to seconds after the write instead of before
+it. The bucket is private with no policies, so a file in that window is
+readable by nobody but the service role.
+
+- The id is generated **on the server**, never taken from the caller, so an
+  upload cannot be aimed at an existing object.
+- The upload is a plain `PUT` of the bytes to the signed URL. That was
+  **established by trying it against the live bucket**, not inferred from the
+  client library's minified source: a `POST` to the same URL is refused with
+  "headers must have required property 'authorization'".
+- The trade this makes, stated plainly: the endpoint that hands out tickets is
+  public by necessity (a customer has no account), so junk can now reach the
+  bucket for the seconds before `confirmDocument` deletes it, where before it
+  was refused at the door. There is still **no rate limit**, which was already
+  a known gap.
+
+**SEO**
+
+- `vehicleVideoLd()` in `seo.ts` emits one `VideoObject` per clip with name,
+  description, `thumbnailUrl`, `uploadDate`, `contentUrl` and an `about`
+  pointing at the vehicle's own `@id`, so the two are one thing to a search
+  engine rather than a page that happens to have a film on it. Nothing is
+  emitted for a vehicle with no video.
+- Photographs keep `f_auto,q_auto,c_limit` from Cloudinary with Vercel's
+  optimiser out of the path, confirmed in the served HTML.
+
+**A bug the tests found, in code written this session.** `verifiedIdsFrom()`
+pushed an id and then checked the cap, so a limit of zero still admitted one.
+Not reachable from the two call sites, which always pass the real maximum, but
+the function did not honour its own contract. Checked before taking now.
+
+**Proven against the real Cloudinary account and the live database, 107 checks,
+all passing**
+
+- **46** on the media path: a real signed upload the way the browser makes it;
+  verification refusing a tampered signature, a changed version, an id outside
+  the vehicle folders and a short signature; a shell script and an SVG both
+  **refused by Cloudinary** because the ticket did not allow those formats; a
+  real video uploaded, delivered, and its poster proven far smaller; the row
+  read back through `publicCarBySlug` with its video and date; the orphan
+  sweep leaving referenced files alone.
+- **8** on the gate, with real rows: the owner writes freely, and an employee
+  **without a window cannot obtain a ticket at all**, for photos or for the add
+  form. A ticket is permission to write into the account, so it is gated like
+  the change it leads to.
+- **28** on the rendered vehicle page: no `<video>` and no mp4 served before
+  the click, the lazy poster and play badge present, the player's `preload`,
+  `poster`, `controls`, `playsInline` and `autoPlay` in the shipped client
+  chunk, the `VideoObject` complete, `Product`+`Car` intact with no
+  `aggregateRating`, and the poster fetched and weighed.
+- **25** on customer documents: ticket, real `PUT`, confirmation, an
+  executable named `.jpg` **deleted from the bucket** rather than merely
+  refused, path stripping, an unknown slot, a traversal id and a missing object
+  all refused, and **a 6MB photograph making the round trip**, which is the one
+  that would have returned 413 in production.
+- **18** regression checks on a served build: every public page, the empty
+  fleet state, `/panel` still bouncing a stranger, an unknown vehicle 404ing,
+  the cron route still demanding its secret, and the vercel.app noindex header
+  still host-scoped.
+- Every run cleaned up with a retrying cleanup and a check that it completed.
+
+> **Not seen in a real browser.** There is still no browser tooling in this
+> repo. The HTTP request the browser makes is proven (the tests make the same
+> multipart POST and the same PUT, against the real services), and the player's
+> attributes are read out of the shipped bundle, but **the React wiring of the
+> two uploaders has not been clicked by a human**. Upload one photo and one
+> video through the panel before telling the client it is done.
+
+**Orphan sweep extended.** `purgeOrphanMedia()` deletes Cloudinary assets under
+the vehicle folder that no vehicle points at and that are over a day old,
+which covers a half-filled add form and a removal whose Cloudinary delete
+failed. **It refuses to delete anything if the vehicle list could not be
+read**, because an empty list looks exactly like "nothing is referenced" and
+one bad query would otherwise wipe the fleet's photographs. It runs in the
+daily retention cron beside the document sweep.
+
+**Still to do on the domain:** `NEXT_PUBLIC_SITE_URL` on Vercel is still the
+vercel.app address, and the DNS records at domains.lk are not added yet. The
+steps are in [`launch-plan.md`](./launch-plan.md) section 3c, and the values
+must be copied from Vercel's own Domains tab rather than from memory.
+
+---
+
 ## 9. Working agreements
 
 - **This file is auto-loaded.** `CLAUDE.md` references it, so it enters context

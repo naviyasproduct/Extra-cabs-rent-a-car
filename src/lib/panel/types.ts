@@ -7,6 +7,7 @@
  */
 
 import type { IdDocumentType, UploadedDocument } from "@/types/booking";
+import type { CarVideo } from "@/types/car";
 
 export type Role = "owner" | "employee";
 
@@ -273,6 +274,8 @@ export interface VehicleRecord {
   withDriverDaily: number | null;
   /** Cloudinary public ids, in display order. */
   images: string[];
+  /** Walkaround videos with the date each was added, in display order. */
+  videos: CarVideo[];
   available: boolean;
   featured: boolean;
   createdAt: string;

@@ -149,6 +149,9 @@ src/lib/panel/time.ts     shifts, presence, sweeper, coverage
 src/lib/panel/window.ts   OTP lifecycle
 src/lib/panel/vehicle-form.ts  pure parsers for the vehicle forms
 src/lib/panel/uploads.ts  ID photos in the private id-documents bucket
+src/lib/panel/vehicle-media.ts  signed direct uploads of vehicle photos and video
+src/lib/cloudinary.ts     delivery URLs for photos, videos and video posters
+src/components/panel/MediaUploader.tsx  the browser side of an upload
 src/lib/panel/retention*.ts  the 90 / 30 day photo rule and the orphan sweep
 src/lib/sms/textlk.ts     Text.lk gateway, phone numbers, segment counting
 src/lib/sms/notify.ts     who gets a booking alert, what it says, the log
@@ -234,11 +237,23 @@ are still static.
   with-driver rate. Those are set on create and then frozen. Adding them is
   mechanical now that an edit updates the `vehicles` row directly: a line in
   `updateVehicleAction()` and a control on the edit form.
-- **Photo upload is built** (2026-09-24): up to five per vehicle on the edit
-  screen, add, remove and "make main". Photos are their own permission,
-  `fleet.photos`, so an employee can be trusted with pictures without being
-  handed the rates. They live on Cloudinary as public ids; ID documents never
-  go there. Proven against the real account 2026-09-24.
+- **Photos and video are built** (2026-09-24): up to five photographs and two
+  walkaround videos per vehicle, **on the add form as well as the edit
+  screen**, with add, remove and "make main". Both are the `fleet.photos`
+  permission, so an employee can be trusted with pictures without being handed
+  the rates. They live on Cloudinary as public ids; ID documents never go
+  there.
+  - **Files upload from the browser straight to Cloudinary**, signed by
+    `lib/panel/vehicle-media.ts`, because a Vercel function refuses a request
+    body over 4.5MB and a phone photograph is routinely more than that. The
+    server signs the ticket and verifies Cloudinary's signature on the way
+    back; it never carries the bytes.
+  - A video costs a visitor **one lazy poster frame** until they click it: the
+    `<video>` element is not on the page before that. Measured at 6.2KB.
+  - Each video stores the date it was added, because Google ignores a
+    `VideoObject` with no `uploadDate`.
+  - Customer ID documents work the same way, straight to the private Supabase
+    bucket, with the magic number check moved to immediately after the write.
 - **Break-glass access is not built.** If the owner is unreachable the employee
   is blocked, which is the open decision in HANDOVER section 7c.
 - **A booked vehicle 404s its own detail page.** It leaves the list, the

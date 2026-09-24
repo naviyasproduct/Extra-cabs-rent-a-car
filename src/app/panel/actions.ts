@@ -29,8 +29,21 @@ import {
 import { closeShift, openShift, markAway } from "@/lib/panel/time";
 import { closeWindow, redeemCode, requestWindow, scopeLabel } from "@/lib/panel/window";
 import { publicCarBySlug, vehicleBySlug } from "@/lib/fleet";
-import { deleteDocuments, saveDocument, VALID_SLOTS } from "@/lib/panel/uploads";
-import { deleteVehiclePhoto, uploadVehiclePhoto } from "@/lib/panel/vehicle-photos";
+import type { MediaKind } from "@/lib/cloudinary";
+import {
+  confirmDocument,
+  deleteDocuments,
+  documentUploadTicket,
+  VALID_SLOTS,
+} from "@/lib/panel/uploads";
+import {
+  deleteVehicleMedia,
+  mediaUploadsConfigured,
+  uploadTicket,
+  verifiedIdsFrom,
+  verifyUpload,
+  type UploadTicket,
+} from "@/lib/panel/vehicle-media";
 import { notifyNewBooking, sendTestSms } from "@/lib/sms/notify";
 import { toMsisdn } from "@/lib/sms/textlk";
 import { admin } from "@/lib/supabase/admin";
@@ -44,7 +57,7 @@ import {
   tierRates,
 } from "@/lib/panel/vehicle-form";
 import { RATE_TIERS } from "@/lib/pricing";
-import { MAX_VEHICLE_IMAGES } from "@/types";
+import { MAX_VEHICLE_IMAGES, MAX_VEHICLE_VIDEOS } from "@/types";
 import type {
   AuditEntry,
   BookingStatus,
@@ -366,16 +379,27 @@ export async function createVehicleAction(formData: FormData) {
     deposit: clamp(num("deposit", 30000), 0, 10_000_000),
     extraKm: optionalRate(formData.get("extraKm")),
     withDriverDaily: optionalRate(formData.get("withDriverDaily")),
-    // Photos arrive with Cloudinary upload. Until then a vehicle shows an
-    // honest placeholder tile; see SafeImage.
-    images: [],
+    // Uploaded from the add form straight to Cloudinary, and carried here as
+    // hidden fields because the vehicle had no row to attach them to yet.
+    // Every id is checked against Cloudinary's own signature before it is
+    // stored, so a hand-edited form cannot plant one.
+    images: verifiedIdsFrom(formData.getAll("photo"), MAX_VEHICLE_IMAGES),
+    videos: verifiedIdsFrom(formData.getAll("video"), MAX_VEHICLE_VIDEOS).map((id) => ({
+      id,
+      uploadedAt: new Date().toISOString(),
+    })),
     available: true,
     featured: false,
     createdBy: user.id,
     deletedAt: null,
   });
 
-  await audit(user.id, "vehicle.created", "vehicle", slug, `Added ${name}`, requestId);
+  const photoCount = verifiedIdsFrom(formData.getAll("photo"), MAX_VEHICLE_IMAGES).length;
+  await audit(
+    user.id, "vehicle.created", "vehicle", slug,
+    photoCount > 0 ? `Added ${name} with ${photoCount} photo${photoCount === 1 ? "" : "s"}` : `Added ${name}`,
+    requestId,
+  );
   refreshPublicFleet();
   revalidatePath("/panel/fleet");
   redirect(`/panel/fleet/${slug}?saved=1`);
@@ -408,59 +432,146 @@ export async function deleteVehicleAction(formData: FormData) {
 }
 
 /* -------------------------------------------------------------------------- */
-/* Vehicle photographs                                                         */
+/* Vehicle photographs and videos                                              */
 /* -------------------------------------------------------------------------- */
 
 /**
- * Photos have their own scope, `fleet.photos`, so an employee can be trusted
- * with pictures without being handed the rates. The vehicle's `images` column
- * holds Cloudinary public ids, in display order; the first is the card shot.
+ * Photos and videos have their own scope, `fleet.photos`, so an employee can
+ * be trusted with pictures without being handed the rates. The vehicle's
+ * `images` and `videos` columns hold Cloudinary public ids in display order;
+ * the first image is the card shot.
+ *
+ * The files themselves never pass through this server: the browser uploads
+ * them to Cloudinary with a signed ticket, because a Vercel function refuses
+ * a request body over 4.5MB. See lib/panel/vehicle-media.ts.
  */
-export async function addVehiclePhotoAction(formData: FormData) {
+
+const MEDIA_KINDS: MediaKind[] = ["image", "video"];
+
+function mediaWords(kind: MediaKind): { one: string; many: string; limit: number } {
+  return kind === "video"
+    ? { one: "video", many: "videos", limit: MAX_VEHICLE_VIDEOS }
+    : { one: "photo", many: "photos", limit: MAX_VEHICLE_IMAGES };
+}
+
+/**
+ * Hands the browser what it needs to upload one file directly, and nothing
+ * more. The ticket is signed here with the API secret, which stays here.
+ *
+ * Gated as tightly as the change it leads to: a ticket is permission to put a
+ * file in the account, so an employee without an open window gets a sentence
+ * instead, exactly as they would from the form itself.
+ */
+export async function uploadTicketAction(
+  slug: string | null,
+  kind: MediaKind,
+): Promise<UploadTicket | { error: string }> {
   const user = await requireStaff();
-  const slug = String(formData.get("slug") ?? "");
-  const back = `/panel/fleet/${slug}`;
+  if (!MEDIA_KINDS.includes(kind)) return { error: "That is not a kind of file we take." };
+  if (!mediaUploadsConfigured()) {
+    return { error: "Uploads are not configured yet. Ask the developer." };
+  }
+  if (slug && !(await vehicleBySlug(slug))) return { error: "That vehicle is gone." };
+
+  // No slug means the add form, where the vehicle does not exist yet, so the
+  // permission that applies is the one for adding a vehicle at all.
+  const scope: WindowScope = slug ? "fleet.photos" : "fleet.create";
+  try {
+    await assertCanWrite(user, scope, slug);
+  } catch (error) {
+    if (error instanceof WindowRequiredError) {
+      return { error: "You need an open window before you can add photos." };
+    }
+    throw error;
+  }
+
+  const ticket = uploadTicket(slug, kind);
+  return ticket ?? { error: "Uploads are not configured yet. Ask the developer." };
+}
+
+/**
+ * Records a file the browser has just uploaded.
+ *
+ * The browser says what it uploaded, and a browser can say anything, so the
+ * signature Cloudinary returned is checked against the API secret before any
+ * id reaches the database. Without that, this action would attach any public
+ * id anybody typed.
+ */
+export async function attachVehicleMediaAction(input: {
+  slug: string;
+  kind: MediaKind;
+  publicId: string;
+  version: string;
+  signature: string;
+}): Promise<{ error?: string }> {
+  const user = await requireStaff();
+  const { slug, kind, publicId, version, signature } = input;
+  if (!MEDIA_KINDS.includes(kind)) return { error: "That is not a kind of file we take." };
 
   const vehicle = await vehicleBySlug(slug);
-  if (!vehicle) return;
+  if (!vehicle) return { error: "That vehicle is gone." };
 
-  const requestId = await gate(
-    user, "fleet.photos", slug, back, "You need an open window for photos to change them.",
+  let requestId: string | null = null;
+  try {
+    requestId = await assertCanWrite(user, "fleet.photos", slug);
+  } catch (error) {
+    if (error instanceof WindowRequiredError) {
+      return { error: "You need an open window for photos to change them." };
+    }
+    throw error;
+  }
+
+  if (!verifyUpload({ publicId, version, signature })) {
+    return { error: "That upload could not be verified. Try again." };
+  }
+
+  const words = mediaWords(kind);
+  const held = kind === "video"
+    ? vehicle.car.videos.map((video) => video.id)
+    : vehicle.car.images;
+  if (held.includes(publicId)) return {};
+  if (held.length >= words.limit) {
+    return { error: `${words.limit} ${words.many} is the limit. Remove one first.` };
+  }
+
+  await updateVehicle(
+    slug,
+    kind === "video"
+      // The date is stamped here because nothing about a Cloudinary public id
+      // says when it arrived, and a VideoObject without an uploadDate is not
+      // a video as far as Google is concerned.
+      ? { videos: [...vehicle.car.videos, { id: publicId, uploadedAt: new Date().toISOString() }] }
+      : { images: [...vehicle.car.images, publicId] },
   );
-
-  const file = formData.get("photo");
-  if (!(file instanceof File) || file.size === 0) {
-    redirect(`${back}?error=${encodeURIComponent("Choose a photo first.")}`);
-  }
-  if (vehicle.car.images.length >= MAX_VEHICLE_IMAGES) {
-    redirect(`${back}?error=${encodeURIComponent(`${MAX_VEHICLE_IMAGES} photos is the limit. Remove one first.`)}`);
-  }
-
-  const result = await uploadVehiclePhoto(file, slug);
-  if (!result.ok) {
-    redirect(`${back}?error=${encodeURIComponent(result.error)}`);
-  }
-
-  await updateVehicle(slug, { images: [...vehicle.car.images, result.publicId] });
+  const count = held.length + 1;
   await audit(
-    user.id, "vehicle.photo_added", "vehicle", slug,
-    `Added a photo to ${vehicle.car.name} (${vehicle.car.images.length + 1} of ${MAX_VEHICLE_IMAGES})`,
+    user.id,
+    kind === "video" ? "vehicle.video_added" : "vehicle.photo_added",
+    "vehicle",
+    slug,
+    `Added a ${words.one} to ${vehicle.car.name} (${count} of ${words.limit})`,
     requestId,
   );
 
   refreshPublicFleet();
-  revalidatePath(back);
-  redirect(`${back}?saved=1`);
+  revalidatePath(`/panel/fleet/${slug}`);
+  return {};
 }
 
-export async function removeVehiclePhotoAction(formData: FormData) {
+export async function removeVehicleMediaAction(formData: FormData) {
   const user = await requireStaff();
   const slug = String(formData.get("slug") ?? "");
   const publicId = String(formData.get("publicId") ?? "");
+  const kind = String(formData.get("kind") ?? "image") as MediaKind;
   const back = `/panel/fleet/${slug}`;
+  if (!MEDIA_KINDS.includes(kind)) return;
 
   const vehicle = await vehicleBySlug(slug);
-  if (!vehicle || !vehicle.car.images.includes(publicId)) return;
+  if (!vehicle) return;
+  const held = kind === "video"
+    ? vehicle.car.videos.map((video) => video.id)
+    : vehicle.car.images;
+  if (!held.includes(publicId)) return;
 
   const requestId = await gate(
     user, "fleet.photos", slug, back, "You need an open window for photos to change them.",
@@ -469,12 +580,22 @@ export async function removeVehiclePhotoAction(formData: FormData) {
   // The row first: staff asked for it off the site, and that must happen even
   // if Cloudinary is briefly unreachable. A failed delete is logged, and the
   // file is then unreferenced rather than shown.
-  await updateVehicle(slug, { images: vehicle.car.images.filter((id) => id !== publicId) });
-  if (!(await deleteVehiclePhoto(publicId))) {
-    console.error(`[photos] ${publicId} removed from ${slug} but not deleted at Cloudinary`);
+  await updateVehicle(
+    slug,
+    kind === "video"
+      ? { videos: vehicle.car.videos.filter((video) => video.id !== publicId) }
+      : { images: vehicle.car.images.filter((id) => id !== publicId) },
+  );
+  if (!(await deleteVehicleMedia(publicId, kind))) {
+    console.error(`[media] ${publicId} removed from ${slug} but not deleted at Cloudinary`);
   }
 
-  await audit(user.id, "vehicle.photo_removed", "vehicle", slug, `Removed a photo from ${vehicle.car.name}`, requestId);
+  const words = mediaWords(kind);
+  await audit(
+    user.id,
+    kind === "video" ? "vehicle.video_removed" : "vehicle.photo_removed",
+    "vehicle", slug, `Removed a ${words.one} from ${vehicle.car.name}`, requestId,
+  );
   refreshPublicFleet();
   revalidatePath(back);
 }
@@ -988,15 +1109,29 @@ export async function setStaffActiveAction(formData: FormData) {
  * keeps a write-only drop from becoming a public file host. An upload no
  * booking claims is deleted after a day (retention.ts, purgeOrphanUploads).
  */
-export async function uploadBookingDocumentAction(
-  formData: FormData,
-): Promise<{ ok: true; document: UploadedDocument } | { ok: false; error: string }> {
-  const file = formData.get("file");
-  const slot = String(formData.get("slot") ?? "") as DocumentSlot;
+export async function bookingDocumentTicketAction(
+  slot: DocumentSlot,
+): Promise<{ ok: true; id: string; url: string } | { ok: false; error: string }> {
+  return documentUploadTicket(slot);
+}
 
-  if (!(file instanceof File)) {
-    return { ok: false, error: "No file was received. Try again." };
+/**
+ * Records a document the browser has just put in the bucket, after checking
+ * the bytes really are a photograph or a PDF. A file that fails is deleted
+ * there and then.
+ *
+ * Deliberately unauthenticated, like the ticket above: the person uploading is
+ * a customer who has no account and never will. The protection is on the
+ * content and on who can read it back, not on who may write.
+ */
+export async function confirmBookingDocumentAction(input: {
+  id: string;
+  slot: DocumentSlot;
+  fileName: string;
+}): Promise<{ ok: true; document: UploadedDocument } | { ok: false; error: string }> {
+  const { id, slot, fileName } = input;
+  if (!VALID_SLOTS.includes(slot)) {
+    return { ok: false, error: "Unknown document type." };
   }
-
-  return saveDocument(file, slot);
+  return confirmDocument(id, slot, String(fileName ?? "upload").slice(0, 200));
 }

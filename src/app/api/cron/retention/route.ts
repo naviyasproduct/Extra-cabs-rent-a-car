@@ -33,7 +33,7 @@ export async function GET(request: Request) {
 
   try {
     const result = await runRetention();
-    console.info(`[retention] expired bookings cleared: ${result.expired}, orphan uploads removed: ${result.orphans}`);
+    console.info(`[retention] expired bookings cleared: ${result.expired}, orphan uploads removed: ${result.orphans}, orphan vehicle media removed: ${result.media}`);
     return Response.json({ ok: true, ...result });
   } catch (error) {
     console.error(`[retention] run failed: ${(error as Error).message}`);

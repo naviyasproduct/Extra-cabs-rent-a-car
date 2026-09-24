@@ -5,14 +5,15 @@ import { requireStaff, canWrite } from "@/lib/panel/guard";
 import { vehicleBySlug } from "@/lib/fleet";
 import { auditForEntity, listStaff } from "@/lib/panel/db";
 import { colomboDateTime } from "@/lib/panel/time";
-import { MAX_VEHICLE_FEATURES, MAX_VEHICLE_IMAGES } from "@/types";
+import { MAX_VEHICLE_FEATURES, MAX_VEHICLE_IMAGES, MAX_VEHICLE_VIDEOS } from "@/types";
 import { CarImage } from "@/components/common/CarImage";
-import { PHOTO_ACCEPT_ATTRIBUTE, photoUploadsConfigured } from "@/lib/panel/vehicle-photos";
+import { mediaUploadsConfigured } from "@/lib/panel/vehicle-media";
 import { RateEditor } from "@/components/panel/RateEditor";
+import { MediaUploader } from "@/components/panel/MediaUploader";
+import { cloudinaryPosterUrl } from "@/lib/cloudinary";
 import {
-  addVehiclePhotoAction,
   makePhotoPrimaryAction,
-  removeVehiclePhotoAction,
+  removeVehicleMediaAction,
   updateVehicleAction,
 } from "../../actions";
 
@@ -33,7 +34,7 @@ export default async function PanelVehicle({
   if (!vehicle) notFound();
 
   const { car } = vehicle;
-  const photosConfigured = photoUploadsConfigured();
+  const photosConfigured = mediaUploadsConfigured();
   const [canUpdate, canPrice, canPhotos, history, staff] = await Promise.all([
     // With the slug: a window granted for THIS vehicle must unlock it.
     canWrite(user, "fleet.update", slug),
@@ -204,8 +205,8 @@ export default async function PanelVehicle({
         ) : null}
       </form>
 
-      {/* Photographs. Their own permission: an employee can be trusted with
-          pictures without being handed the rates. */}
+      {/* Photographs and video. Their own permission: an employee can be
+          trusted with pictures without being handed the rates. */}
       <section>
         <h2 className="font-display text-sm font-bold uppercase tracking-[0.14em] text-muted">
           Photos
@@ -213,12 +214,13 @@ export default async function PanelVehicle({
         <p className="mt-2 max-w-[62ch] text-sm text-muted">
           Up to {MAX_VEHICLE_IMAGES}. The first one is what customers see on the
           fleet grid, so put the best exterior shot first. Landscape photos in
-          daylight work best.
+          daylight work best. They upload straight from this device to our image
+          service, so a large photo from a phone is fine.
         </p>
 
         {!photosConfigured ? (
           <p className="mt-4 bg-warning/12 px-4 py-3 text-sm text-warning">
-            Photo uploads are not configured on this deployment yet.
+            Uploads are not configured on this deployment yet.
           </p>
         ) : null}
 
@@ -257,9 +259,10 @@ export default async function PanelVehicle({
                         </button>
                       </form>
                     ) : null}
-                    <form action={removeVehiclePhotoAction}>
+                    <form action={removeVehicleMediaAction}>
                       <input type="hidden" name="slug" value={car.slug} />
                       <input type="hidden" name="publicId" value={publicId} />
+                      <input type="hidden" name="kind" value="image" />
                       <button
                         type="submit"
                         className="rounded-full bg-field px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-field-hover"
@@ -274,31 +277,13 @@ export default async function PanelVehicle({
           </ul>
         )}
 
-        {canPhotos && car.images.length < MAX_VEHICLE_IMAGES ? (
-          <form
-            action={addVehiclePhotoAction}
-            className="mt-5 flex flex-wrap items-end gap-3"
-          >
-            <input type="hidden" name="slug" value={car.slug} />
-            <label className="flex flex-col gap-1">
-              <span className="text-xs uppercase tracking-[0.12em] text-muted">
-                Add a photo
-              </span>
-              <input
-                type="file"
-                name="photo"
-                required
-                accept={PHOTO_ACCEPT_ATTRIBUTE}
-                className="max-w-full text-sm text-ink-soft file:mr-3 file:rounded-full file:border-0 file:bg-field file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
-              />
-            </label>
-            <button
-              type="submit"
-              className="h-11 rounded-full bg-brand px-5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover"
-            >
-              Upload
-            </button>
-          </form>
+        {canPhotos && photosConfigured ? (
+          <MediaUploader
+            slug={car.slug}
+            kind="image"
+            mode="attach"
+            remaining={MAX_VEHICLE_IMAGES - car.images.length}
+          />
         ) : null}
 
         {!canPhotos ? (
@@ -307,6 +292,57 @@ export default async function PanelVehicle({
             Photos are locked. Ask the owner for a code with the Change photos
             permission.
           </p>
+        ) : null}
+      </section>
+
+      <section>
+        <h2 className="font-display text-sm font-bold uppercase tracking-[0.14em] text-muted">
+          Video
+        </h2>
+        <p className="mt-2 max-w-[62ch] text-sm text-muted">
+          Optional, up to {MAX_VEHICLE_VIDEOS}. A slow walk around the car and a
+          look inside sells a vehicle better than any photograph. Customers see
+          a still picture until they press play, so a video costs them nothing
+          unless they want it.
+        </p>
+
+        {car.videos.length > 0 ? (
+          <ul className="mt-4 grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            {car.videos.map((video, index) => (
+              <li key={video.id} className="flex flex-col gap-2">
+                {/* eslint-disable-next-line @next/next/no-img-element -- the
+                    poster is already a Cloudinary transform at this size, so
+                    next/image would put a second optimiser in front of it. */}
+                <img
+                  src={cloudinaryPosterUrl(video.id, { width: 320 })}
+                  alt={`${car.name}, video ${index + 1}`}
+                  className="aspect-[4/3] w-full bg-charcoal object-cover"
+                />
+                {canPhotos ? (
+                  <form action={removeVehicleMediaAction}>
+                    <input type="hidden" name="slug" value={car.slug} />
+                    <input type="hidden" name="publicId" value={video.id} />
+                    <input type="hidden" name="kind" value="video" />
+                    <button
+                      type="submit"
+                      className="rounded-full bg-field px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-field-hover"
+                    >
+                      Remove
+                    </button>
+                  </form>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : null}
+
+        {canPhotos && photosConfigured ? (
+          <MediaUploader
+            slug={car.slug}
+            kind="video"
+            mode="attach"
+            remaining={MAX_VEHICLE_VIDEOS - car.videos.length}
+          />
         ) : null}
       </section>
 

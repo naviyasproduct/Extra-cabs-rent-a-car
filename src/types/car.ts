@@ -19,6 +19,29 @@ export const MAX_VEHICLE_IMAGES = 5;
  */
 export const MAX_VEHICLE_FEATURES = 12;
 
+/**
+ * How many walkaround videos a vehicle may show.
+ *
+ * Two: one outside, one inside. A video is the heaviest thing on the page by
+ * an order of magnitude, and a third one is a third poster image to load
+ * before anybody has pressed play.
+ */
+export const MAX_VEHICLE_VIDEOS = 2;
+
+/**
+ * One walkaround video.
+ *
+ * The date is stored, not derived: Google needs `uploadDate` on a
+ * VideoObject before it will treat it as a video at all, and nothing about a
+ * Cloudinary public id says when it arrived.
+ */
+export interface CarVideo {
+  /** Cloudinary public id, delivered from the video resource type. */
+  id: string;
+  /** ISO 8601, stamped when the video was attached to the vehicle. */
+  uploadedAt: string;
+}
+
 export type CarCategory =
   | "micro"
   | "hatchback"
@@ -93,6 +116,13 @@ export interface Car {
    * At most MAX_VEHICLE_IMAGES entries; anything beyond that is ignored.
    */
   images: string[];
+
+  /**
+   * Walkaround videos, in display order, at most MAX_VEHICLE_VIDEOS. Empty
+   * for most vehicles: a video is optional and the gallery simply does not
+   * offer one when there is none.
+   */
+  videos: CarVideo[];
   available: boolean;
   featured: boolean;
   /** Marketing flag: "Popular", "New in fleet", etc. */

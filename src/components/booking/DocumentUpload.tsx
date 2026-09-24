@@ -2,7 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CircleCheck, FileText, Loader2, Upload, X } from "lucide-react";
-import { uploadBookingDocumentAction } from "@/app/panel/actions";
+import {
+  bookingDocumentTicketAction,
+  confirmBookingDocumentAction,
+} from "@/app/panel/actions";
 import { cn } from "@/lib/utils";
 import type { DocumentSlot, UploadedDocument } from "@/types";
 
@@ -18,6 +21,12 @@ import type { DocumentSlot, UploadedDocument } from "@/types";
  * The preview is a local object URL, not a fetch of what was stored: the
  * customer is checking they picked the right side of the card, and the stored
  * copy is not readable without a staff session anyway.
+ *
+ * **The file goes straight to storage, not through this site.** A Vercel
+ * function accepts 4.5MB of request body, and a phone photograph of an NIC is
+ * routinely more than that, so the old route failed for real customers on real
+ * phones. The server signs a one-off upload URL, the browser uploads to it,
+ * and the server then checks the bytes that landed.
  */
 export function DocumentUpload({
   slot,
@@ -38,6 +47,7 @@ export function DocumentUpload({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [percent, setPercent] = useState(0);
 
   // An object URL is a live handle into the browser's memory. Without this it
   // leaks on every replaced file and on unmount.
@@ -51,13 +61,44 @@ export function DocumentUpload({
     if (!file) return;
     setBusy(true);
     setError(null);
-
-    const body = new FormData();
-    body.append("file", file);
-    body.append("slot", slot);
+    setPercent(0);
 
     try {
-      const result = await uploadBookingDocumentAction(body);
+      const ticket = await bookingDocumentTicketAction(slot);
+      if (!ticket.ok) {
+        setError(ticket.error);
+        onChange(slot, undefined);
+        return;
+      }
+
+      // XMLHttpRequest, not fetch: these are big files on mobile data and
+      // fetch cannot report upload progress. A silent wait reads as broken.
+      const status = await new Promise<number>((resolve) => {
+        const request = new XMLHttpRequest();
+        request.open("PUT", ticket.url);
+        request.setRequestHeader("content-type", file.type || "application/octet-stream");
+        request.setRequestHeader("x-upsert", "false");
+        request.upload.addEventListener("progress", (event) => {
+          if (event.lengthComputable) {
+            setPercent(Math.round((event.loaded / event.total) * 100));
+          }
+        });
+        request.addEventListener("load", () => resolve(request.status));
+        request.addEventListener("error", () => resolve(0));
+        request.send(file);
+      });
+
+      if (status < 200 || status >= 300) {
+        setError("That did not upload. Check your connection and try again.");
+        onChange(slot, undefined);
+        return;
+      }
+
+      const result = await confirmBookingDocumentAction({
+        id: ticket.id,
+        slot,
+        fileName: file.name,
+      });
       if (result.ok) {
         setPreview((current) => {
           if (current) URL.revokeObjectURL(current);
@@ -167,7 +208,7 @@ export function DocumentUpload({
           </span>
           <span className="min-w-0">
             <span className="block text-sm font-semibold text-ink">
-              {busy ? "Uploading…" : "Choose a photo"}
+              {busy ? `Uploading ${percent}%` : "Choose a photo"}
             </span>
             <span className="mt-0.5 block text-sm text-muted">{hint}</span>
           </span>

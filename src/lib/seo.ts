@@ -1,6 +1,6 @@
 import type { Car, Faq, Location, Service } from "@/types";
 import { site, siteUrl } from "@/lib/data/site";
-import { cloudinaryUrl, isPublicId } from "@/lib/cloudinary";
+import { cloudinaryPosterUrl, cloudinaryUrl, cloudinaryVideoUrl, isPublicId } from "@/lib/cloudinary";
 
 /**
  * Structured data builders.
@@ -176,6 +176,39 @@ export function carLd(car: Car) {
       seller: { "@id": ORGANISATION_ID },
     },
   };
+}
+
+/**
+ * The walkaround videos on a vehicle page, as VideoObjects.
+ *
+ * Google will not treat a video as a video without `thumbnailUrl`, `name`,
+ * `description` and `uploadDate`, which is why the upload date is stored with
+ * the id rather than guessed at here. `contentUrl` points at the MP4 itself so
+ * the video can be indexed and shown as a video result, which is a second
+ * place on the page for a vehicle to appear.
+ *
+ * Returns an empty array when the vehicle has no video, and the caller emits
+ * nothing rather than an empty graph.
+ */
+export function vehicleVideoLd(car: Car) {
+  return car.videos.map((video, index) => ({
+    "@context": "https://schema.org",
+    "@type": "VideoObject",
+    "@id": `${siteUrl}/fleet/${car.slug}#video-${index + 1}`,
+    name: `${car.name} walkaround`,
+    description:
+      car.description.trim().length > 0
+        ? car.description
+        : `A look around the ${car.name} available to rent from ${site.name} in ${site.address.city}.`,
+    thumbnailUrl: [cloudinaryPosterUrl(video.id, { width: 1280 })],
+    uploadDate: video.uploadedAt,
+    contentUrl: cloudinaryVideoUrl(video.id, { width: 1280 }),
+    embedUrl: absoluteUrl(`/fleet/${car.slug}`),
+    // The vehicle the video is of, so the two records are one thing to a
+    // search engine rather than a page that happens to have a film on it.
+    about: { "@id": `${siteUrl}/fleet/${car.slug}#vehicle` },
+    publisher: { "@id": ORGANISATION_ID },
+  }));
 }
 
 /** One of the five services, priced from its cheapest row. */

@@ -4,8 +4,10 @@ import { requireStaff, canWrite } from "@/lib/panel/guard";
 import { staffVehicles } from "@/lib/fleet";
 import { openWindowFor, pendingRequestFor, SCOPES } from "@/lib/panel/window";
 import { formatPrice } from "@/lib/utils";
-import { MAX_VEHICLE_FEATURES } from "@/types";
+import { MAX_VEHICLE_FEATURES, MAX_VEHICLE_IMAGES, MAX_VEHICLE_VIDEOS } from "@/types";
 import { RateEditor } from "@/components/panel/RateEditor";
+import { MediaUploader } from "@/components/panel/MediaUploader";
+import { mediaUploadsConfigured } from "@/lib/panel/vehicle-media";
 import {
   createVehicleAction,
   deleteVehicleAction,
@@ -24,6 +26,7 @@ export default async function PanelFleet({
   const { error, show } = await searchParams;
   const user = await requireStaff();
   const showDeleted = show === "deleted";
+  const photosConfigured = mediaUploadsConfigured();
 
   const vehicles = await staffVehicles(showDeleted);
   const [open, pending, canCreate] = await Promise.all([
@@ -215,6 +218,42 @@ export default async function PanelFleet({
                 placeholder={"Chauffeur included\nNappa leather interior\nAmbient cabin lighting\nRear window blinds\nComplimentary wedding decoration\nBottled water and tissues"}
                 hint={`One feature per line, up to ${MAX_VEHICLE_FEATURES}. A bullet or dash at the start of a line is stripped for you.`}
               />
+            </Group>
+
+            <Group title="Photos and video">
+              <div className="sm:col-span-2 lg:col-span-4">
+                <p className="max-w-[62ch] text-sm text-muted">
+                  Up to {MAX_VEHICLE_IMAGES} photos and {MAX_VEHICLE_VIDEOS}{" "}
+                  videos. The first photo is the one customers see on the fleet
+                  grid. They upload as you pick them, straight from this device,
+                  so a large photo or a clip from a phone is fine. You can
+                  change all of this later on the vehicle itself.
+                </p>
+
+                {!photosConfigured ? (
+                  <p className="mt-4 bg-warning/12 px-4 py-3 text-sm text-warning">
+                    Uploads are not configured on this deployment yet, so this
+                    vehicle will be saved without pictures.
+                  </p>
+                ) : (
+                  <>
+                    <MediaUploader
+                      slug={null}
+                      kind="image"
+                      mode="collect"
+                      fieldName="photo"
+                      remaining={MAX_VEHICLE_IMAGES}
+                    />
+                    <MediaUploader
+                      slug={null}
+                      kind="video"
+                      mode="collect"
+                      fieldName="video"
+                      remaining={MAX_VEHICLE_VIDEOS}
+                    />
+                  </>
+                )}
+              </div>
             </Group>
 
             <div>

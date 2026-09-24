@@ -16,7 +16,7 @@ import { CarGallery } from "@/components/fleet/CarGallery";
 import { PriceCard } from "@/components/fleet/PriceCard";
 import { CarCard } from "@/components/fleet/CarCard";
 import { JsonLd } from "@/components/common/JsonLd";
-import { breadcrumbLd, carLd } from "@/lib/seo";
+import { breadcrumbLd, carLd, vehicleVideoLd } from "@/lib/seo";
 import { formatPrice } from "@/lib/utils";
 import { KM_PER_DAY } from "@/lib/pricing";
 import { cloudinaryUrl, isPublicId } from "@/lib/cloudinary";
@@ -127,6 +127,11 @@ export default async function CarDetailPage({
   return (
     <>
       <JsonLd data={carLd(car)} />
+      {/* One VideoObject per walkaround clip. Emitted only when there is a
+          video, so a vehicle without one carries no empty record. */}
+      {vehicleVideoLd(car).map((video) => (
+        <JsonLd key={video["@id"]} data={video} />
+      ))}
       <JsonLd
         data={breadcrumbLd([
           { name: "Home", path: "/" },
@@ -173,7 +178,12 @@ export default async function CarDetailPage({
             {/* The gallery is its own grid item so the booking card can follow it
                directly when the grid collapses to one column. */}
             <div className="col-span-4 md:col-span-8 lg:col-span-8">
-              <CarGallery images={car.images} name={car.name} badge={car.badge} />
+              <CarGallery
+                images={car.images}
+                videos={car.videos}
+                name={car.name}
+                badge={car.badge}
+              />
             </div>
 
             {/* Booking card. Second in the DOM, so on phones and tablets it sits

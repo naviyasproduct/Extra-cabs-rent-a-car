@@ -1,6 +1,14 @@
 import "server-only";
-import { SYSTEM_STAFF_ID, insertAudit, listBookings, updateBooking } from "./db";
+import {
+  SYSTEM_STAFF_ID,
+  insertAudit,
+  listBookings,
+  listVehicleRecords,
+  updateBooking,
+} from "./db";
 import { deleteDocuments, listStoredDocuments } from "./uploads";
+import { deleteVehicleMedia, listStoredMedia } from "./vehicle-media";
+import { VEHICLE_FOLDER } from "@/lib/cloudinary";
 import { colomboDay, documentsExpired } from "./retention-rules";
 
 /**
@@ -70,8 +78,47 @@ export async function purgeOrphanUploads(now: Date = new Date()): Promise<number
 }
 
 /** Both sweeps, for the scheduled job. */
-export async function runRetention(now: Date = new Date()): Promise<{ expired: number; orphans: number }> {
+/**
+ * Deletes vehicle photographs and videos that no vehicle points at.
+ *
+ * Two ways they appear. Somebody fills in the add form, uploads four
+ * photographs and closes the tab: the files are in the account and no row was
+ * ever written. Or a removal updated the row and then failed to reach
+ * Cloudinary, which is deliberate (staff asked for the photo off the site and
+ * that must happen either way) and leaves the file behind.
+ *
+ * **It refuses to delete anything if the vehicle list could not be read.** An
+ * empty list would otherwise look exactly like "nothing is referenced", and
+ * one bad query would wipe every photograph in the fleet.
+ */
+export async function purgeOrphanMedia(now: Date = new Date()): Promise<number> {
+  const vehicles = await listVehicleRecords();
+  const referenced = new Set<string>();
+  for (const vehicle of vehicles) {
+    for (const id of vehicle.images) referenced.add(id);
+    for (const video of vehicle.videos ?? []) referenced.add(video.id);
+  }
+
+  const cutoff = now.getTime() - ORPHAN_AFTER_HOURS * 60 * 60 * 1000;
+  const [images, videos] = await Promise.all([
+    listStoredMedia(VEHICLE_FOLDER, "image"),
+    listStoredMedia(VEHICLE_FOLDER, "video"),
+  ]);
+
+  let deleted = 0;
+  for (const asset of [...images, ...videos]) {
+    if (referenced.has(asset.publicId)) continue;
+    if (Date.parse(asset.createdAt) >= cutoff) continue;
+    if (await deleteVehicleMedia(asset.publicId, asset.kind)) deleted += 1;
+  }
+  return deleted;
+}
+
+export async function runRetention(
+  now: Date = new Date(),
+): Promise<{ expired: number; orphans: number; media: number }> {
   const expired = await purgeExpiredDocuments(now);
   const orphans = await purgeOrphanUploads(now);
-  return { expired, orphans };
+  const media = await purgeOrphanMedia(now);
+  return { expired, orphans, media };
 }
