@@ -5,9 +5,16 @@ import { requireStaff, canWrite } from "@/lib/panel/guard";
 import { vehicleBySlug } from "@/lib/fleet";
 import { auditForEntity, listStaff } from "@/lib/panel/db";
 import { colomboDateTime } from "@/lib/panel/time";
-import { MAX_VEHICLE_FEATURES } from "@/types";
+import { MAX_VEHICLE_FEATURES, MAX_VEHICLE_IMAGES } from "@/types";
+import { CarImage } from "@/components/common/CarImage";
+import { PHOTO_ACCEPT_ATTRIBUTE, photoUploadsConfigured } from "@/lib/panel/vehicle-photos";
 import { RateEditor } from "@/components/panel/RateEditor";
-import { updateVehicleAction } from "../../actions";
+import {
+  addVehiclePhotoAction,
+  makePhotoPrimaryAction,
+  removeVehiclePhotoAction,
+  updateVehicleAction,
+} from "../../actions";
 
 export const dynamic = "force-dynamic";
 
@@ -26,9 +33,12 @@ export default async function PanelVehicle({
   if (!vehicle) notFound();
 
   const { car } = vehicle;
-  const [canUpdate, canPrice, history, staff] = await Promise.all([
-    canWrite(user, "fleet.update"),
-    canWrite(user, "pricing.update"),
+  const photosConfigured = photoUploadsConfigured();
+  const [canUpdate, canPrice, canPhotos, history, staff] = await Promise.all([
+    // With the slug: a window granted for THIS vehicle must unlock it.
+    canWrite(user, "fleet.update", slug),
+    canWrite(user, "pricing.update", slug),
+    canWrite(user, "fleet.photos", slug),
     // The ten most recent changes to this vehicle, newest first.
     auditForEntity("vehicle", slug, 10),
     listStaff(),
@@ -193,6 +203,112 @@ export default async function PanelVehicle({
           </div>
         ) : null}
       </form>
+
+      {/* Photographs. Their own permission: an employee can be trusted with
+          pictures without being handed the rates. */}
+      <section>
+        <h2 className="font-display text-sm font-bold uppercase tracking-[0.14em] text-muted">
+          Photos
+        </h2>
+        <p className="mt-2 max-w-[62ch] text-sm text-muted">
+          Up to {MAX_VEHICLE_IMAGES}. The first one is what customers see on the
+          fleet grid, so put the best exterior shot first. Landscape photos in
+          daylight work best.
+        </p>
+
+        {!photosConfigured ? (
+          <p className="mt-4 bg-warning/12 px-4 py-3 text-sm text-warning">
+            Photo uploads are not configured on this deployment yet.
+          </p>
+        ) : null}
+
+        {car.images.length === 0 ? (
+          <p className="mt-4 bg-tile p-5 text-sm text-muted">
+            No photos yet. The vehicle shows a placeholder tile on the website
+            until the first one is added.
+          </p>
+        ) : (
+          <ul className="mt-4 grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
+            {car.images.map((publicId, index) => (
+              <li key={publicId} className="flex flex-col gap-2">
+                <div className="relative aspect-[4/3] overflow-hidden bg-charcoal">
+                  <CarImage
+                    src={publicId}
+                    alt={`${car.name}, photo ${index + 1}`}
+                    sizes="(max-width: 640px) 100vw, 20vw"
+                  />
+                  {index === 0 ? (
+                    <span className="absolute left-2 top-2 rounded-full bg-brand px-2 py-0.5 text-xs font-semibold text-white">
+                      Main
+                    </span>
+                  ) : null}
+                </div>
+                {canPhotos ? (
+                  <div className="flex flex-wrap gap-2">
+                    {index > 0 ? (
+                      <form action={makePhotoPrimaryAction}>
+                        <input type="hidden" name="slug" value={car.slug} />
+                        <input type="hidden" name="publicId" value={publicId} />
+                        <button
+                          type="submit"
+                          className="rounded-full bg-field px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-field-hover"
+                        >
+                          Make main
+                        </button>
+                      </form>
+                    ) : null}
+                    <form action={removeVehiclePhotoAction}>
+                      <input type="hidden" name="slug" value={car.slug} />
+                      <input type="hidden" name="publicId" value={publicId} />
+                      <button
+                        type="submit"
+                        className="rounded-full bg-field px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-field-hover"
+                      >
+                        Remove
+                      </button>
+                    </form>
+                  </div>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {canPhotos && car.images.length < MAX_VEHICLE_IMAGES ? (
+          <form
+            action={addVehiclePhotoAction}
+            className="mt-5 flex flex-wrap items-end gap-3"
+          >
+            <input type="hidden" name="slug" value={car.slug} />
+            <label className="flex flex-col gap-1">
+              <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                Add a photo
+              </span>
+              <input
+                type="file"
+                name="photo"
+                required
+                accept={PHOTO_ACCEPT_ATTRIBUTE}
+                className="max-w-full text-sm text-ink-soft file:mr-3 file:rounded-full file:border-0 file:bg-field file:px-4 file:py-2 file:text-sm file:font-semibold file:text-ink"
+              />
+            </label>
+            <button
+              type="submit"
+              className="h-11 rounded-full bg-brand px-5 text-sm font-semibold text-white transition-colors hover:bg-brand-hover"
+            >
+              Upload
+            </button>
+          </form>
+        ) : null}
+
+        {!canPhotos ? (
+          <p className="mt-4 flex items-center gap-2 bg-field px-4 py-3 text-sm text-ink-soft">
+            <Lock className="size-4 shrink-0 text-muted" aria-hidden />
+            Photos are locked. Ask the owner for a code with the Change photos
+            permission.
+          </p>
+        ) : null}
+      </section>
 
       <section>
         <h2 className="font-display text-sm font-bold uppercase tracking-[0.14em] text-muted">

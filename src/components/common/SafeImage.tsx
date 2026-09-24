@@ -1,8 +1,19 @@
 "use client";
 
-import Image from "next/image";
+import Image, { type ImageLoaderProps } from "next/image";
 import { useState, type ReactNode } from "react";
+import { cloudinaryUrl, isPublicId } from "@/lib/cloudinary";
 import { cn } from "@/lib/utils";
+
+/**
+ * Vehicle photos are stored as Cloudinary public ids, so they are delivered by
+ * Cloudinary, resized to the width actually being drawn. Local files (the
+ * hero, the logo) keep Next's own optimiser: this loader is only attached when
+ * the src is a public id.
+ */
+function cloudinaryLoader({ src, width, quality }: ImageLoaderProps): string {
+  return cloudinaryUrl(src, { width, quality });
+}
 
 interface SafeImageProps {
   /** Empty or missing renders the placeholder without a request. */
@@ -84,6 +95,7 @@ export function SafeImage({
       src={src}
       alt={alt}
       fill
+      loader={isPublicId(src) ? cloudinaryLoader : undefined}
       sizes={sizes}
       preload={preload}
       // Left undefined rather than set to "lazy": next/image throws when a

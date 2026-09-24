@@ -2855,6 +2855,113 @@ employee's password from the panel, and the `PANEL_OTP_PEPPER` and
 > No secrets were in it: every secret in `.env.local` was checked against the
 > full history and found zero times.
 
+### 2026-09-24 - Vehicle photos on Cloudinary
+
+The last piece before deploying. **Proven against the real Cloudinary account
+(`dij8zm3xp`) and the live database on 2026-09-24**: see the results at the
+end of this entry.
+
+**How it works**
+
+- `src/lib/cloudinary.ts` is **pure and client-safe**: the cloud name (public
+  by design, it is in every delivery URL) and the URL builder. Photos are
+  stored as **public ids**, not URLs, so delivery options can change without
+  rewriting a database row.
+- `src/lib/panel/vehicle-photos.ts` is **server only** and signs every upload
+  and delete with the API secret. **Deliberately not an unsigned upload
+  preset:** an unsigned preset lets anyone who reads the page JavaScript
+  upload into the account. No SDK; a signed call is a POST plus a SHA-1.
+- Delivery is `f_auto,q_auto,w_<rendered width>,c_limit`, and `SafeImage`
+  attaches a Cloudinary loader **only when the src is a public id**, so
+  Cloudinary resizes vehicle photos and Vercel's image optimiser is not in the
+  path (and not billed for it). Local images, the hero and the logo, are
+  untouched.
+- The vehicle JSON-LD and the vehicle page's share-card image use the same
+  builder, so a search result and a WhatsApp preview show the real photo.
+
+**The panel**
+
+- Photos live on the vehicle edit screen: a grid of up to
+  `MAX_VEHICLE_IMAGES` (5), each with **Remove**, and **Make main** on all but
+  the first. The first photo is the fleet-grid shot, and the grid says so.
+- **Photos have their own permission, `fleet.photos`**, which existed as a
+  scope with nothing behind it. It is now in `SCOPES`, so an employee can ask
+  for a photo window without being handed the rates; the owner writes freely.
+- Uploading is refused past five, and the file is checked on its **magic
+  numbers**, not the declared type: JPG, PNG, WEBP and HEIC only. **No PDF and
+  no SVG** (an SVG can carry script), unlike the ID document rules where a PDF
+  is legitimate. 10MB cap.
+- Removing updates the row first and then deletes at Cloudinary: staff asked
+  for it off the site, and that must happen even if Cloudinary is briefly
+  unreachable. A failed delete is logged and leaves an unreferenced file.
+
+**Customer ID documents still never touch Cloudinary.** They stay in the
+private Supabase bucket. Cloudinary is a public delivery CDN: right for a car
+photograph, wrong for a photograph of someone's NIC.
+
+**22 unit checks pass** (signing, file sniffing, delivery URLs, and which srcs
+get the Cloudinary loader). `tsc` clean, build passes.
+
+> **A test that asserted a remembered value, and was wrong.** The first
+> version checked the signature against a hash "from Cloudinary's documented
+> example" recalled from memory. It failed. Three independent methods (the
+> module, a fresh `crypto` hash, and `openssl dgst -sha1`) agree the code
+> hashes exactly the string it intends to, so the **assertion** was wrong, not
+> the implementation. The test now checks the rule it can actually verify and
+> says plainly that the wire format is only proven by a real upload.
+
+**Proven against the real account and the live database**
+
+- **9 checks on Cloudinary itself:** a signed upload accepted, the public id
+  landing in this vehicle's folder, the delivery URL returning a real image,
+  an executable named `.jpg` never reaching the account, delete reporting
+  success, delivery stopping afterwards, and a second delete not erroring.
+- **21 checks end to end through the panel forms:** no upload control without
+  a photo window and the reason shown, the control appearing with one, an
+  upload storing one Cloudinary public id, the photo reaching the **public
+  vehicle page and its `Car` JSON-LD as a res.cloudinary.com URL that really
+  delivers**, a second photo keeping order, "make main" reordering, remove
+  taking it off the vehicle and Cloudinary ceasing to deliver it, the upload
+  control withdrawn at five photos **and a replayed upload refused
+  server-side**, the same refusal once the window is closed, **an edit window
+  not unlocking photos**, and every photo change audited and tied to the
+  approving window.
+- **No regressions:** the 43 panel and 24 customer-side checks were re-run on
+  the same build and all pass.
+
+> **The API key was refused at first**, with `actions=["create"]`: Cloudinary
+> issues scoped keys and that one had read but not upload. A probe separated
+> the cases (ping 200, listing images 200, usage 403), which is how it was
+> clear this was permissions and not a bad signature (those answer "Invalid
+> Signature"). The developer switched the key to the master role and every
+> check passed. The panel now says **"Cloudinary refused the account key. It
+> needs upload permission"** for a 401 or 403, rather than "try again", which
+> would have had staff retrying forever over a setup problem.
+
+> ### A real bug the test found, older than this work
+>
+> A window granted for **one vehicle** left the panel's controls hidden for
+> that very vehicle. `canWrite(user, scope)` took no target, while
+> `assertCanWrite` refuses a targeted window when the target does not match,
+> so the page asked "may you edit any vehicle?", got "no", and locked the
+> fields the server would have accepted. `canWrite` now takes the slug and the
+> edit page passes it for all three scopes. The fleet list had the same fault
+> for its per-row Remove button and now decides per vehicle from the window it
+> had already loaded, without extra queries.
+
+> **The owner account was a placeholder** ("Full Name" / `owner@email.com`,
+> the example arguments run literally). Removed on 2026-09-24 after checking
+> it had no audit, shift, presence or access rows. The real owner is
+> **Shanaka**; the login address is the working business inbox
+> (`extracabsinfo@gmail.com`) because `@extracabs.lk` mailboxes do not exist
+> yet and that address matters for password resets. Changing it later is a
+> field on the staff row plus the Supabase Auth user.
+
+> **On Vercel:** the whole `.env.local` was pasted into the project's
+> environment variables and `SUPABASE_DB_PASSWORD` has since been removed from
+> there, which is right: it is only for pushing migrations from a terminal.
+> **Cloudinary's three values still have to be added to Vercel.**
+
 ---
 
 ## 9. Working agreements

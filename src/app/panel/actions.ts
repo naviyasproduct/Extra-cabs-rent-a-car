@@ -30,6 +30,7 @@ import { closeShift, openShift, markAway } from "@/lib/panel/time";
 import { closeWindow, redeemCode, requestWindow, scopeLabel } from "@/lib/panel/window";
 import { publicCarBySlug, vehicleBySlug } from "@/lib/fleet";
 import { deleteDocuments, saveDocument, VALID_SLOTS } from "@/lib/panel/uploads";
+import { deleteVehiclePhoto, uploadVehiclePhoto } from "@/lib/panel/vehicle-photos";
 import { notifyNewBooking, sendTestSms } from "@/lib/sms/notify";
 import { toMsisdn } from "@/lib/sms/textlk";
 import { admin } from "@/lib/supabase/admin";
@@ -43,6 +44,7 @@ import {
   tierRates,
 } from "@/lib/panel/vehicle-form";
 import { RATE_TIERS } from "@/lib/pricing";
+import { MAX_VEHICLE_IMAGES } from "@/types";
 import type {
   AuditEntry,
   BookingStatus,
@@ -403,6 +405,101 @@ export async function deleteVehicleAction(formData: FormData) {
 
   refreshPublicFleet();
   revalidatePath("/panel/fleet");
+}
+
+/* -------------------------------------------------------------------------- */
+/* Vehicle photographs                                                         */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Photos have their own scope, `fleet.photos`, so an employee can be trusted
+ * with pictures without being handed the rates. The vehicle's `images` column
+ * holds Cloudinary public ids, in display order; the first is the card shot.
+ */
+export async function addVehiclePhotoAction(formData: FormData) {
+  const user = await requireStaff();
+  const slug = String(formData.get("slug") ?? "");
+  const back = `/panel/fleet/${slug}`;
+
+  const vehicle = await vehicleBySlug(slug);
+  if (!vehicle) return;
+
+  const requestId = await gate(
+    user, "fleet.photos", slug, back, "You need an open window for photos to change them.",
+  );
+
+  const file = formData.get("photo");
+  if (!(file instanceof File) || file.size === 0) {
+    redirect(`${back}?error=${encodeURIComponent("Choose a photo first.")}`);
+  }
+  if (vehicle.car.images.length >= MAX_VEHICLE_IMAGES) {
+    redirect(`${back}?error=${encodeURIComponent(`${MAX_VEHICLE_IMAGES} photos is the limit. Remove one first.`)}`);
+  }
+
+  const result = await uploadVehiclePhoto(file, slug);
+  if (!result.ok) {
+    redirect(`${back}?error=${encodeURIComponent(result.error)}`);
+  }
+
+  await updateVehicle(slug, { images: [...vehicle.car.images, result.publicId] });
+  await audit(
+    user.id, "vehicle.photo_added", "vehicle", slug,
+    `Added a photo to ${vehicle.car.name} (${vehicle.car.images.length + 1} of ${MAX_VEHICLE_IMAGES})`,
+    requestId,
+  );
+
+  refreshPublicFleet();
+  revalidatePath(back);
+  redirect(`${back}?saved=1`);
+}
+
+export async function removeVehiclePhotoAction(formData: FormData) {
+  const user = await requireStaff();
+  const slug = String(formData.get("slug") ?? "");
+  const publicId = String(formData.get("publicId") ?? "");
+  const back = `/panel/fleet/${slug}`;
+
+  const vehicle = await vehicleBySlug(slug);
+  if (!vehicle || !vehicle.car.images.includes(publicId)) return;
+
+  const requestId = await gate(
+    user, "fleet.photos", slug, back, "You need an open window for photos to change them.",
+  );
+
+  // The row first: staff asked for it off the site, and that must happen even
+  // if Cloudinary is briefly unreachable. A failed delete is logged, and the
+  // file is then unreferenced rather than shown.
+  await updateVehicle(slug, { images: vehicle.car.images.filter((id) => id !== publicId) });
+  if (!(await deleteVehiclePhoto(publicId))) {
+    console.error(`[photos] ${publicId} removed from ${slug} but not deleted at Cloudinary`);
+  }
+
+  await audit(user.id, "vehicle.photo_removed", "vehicle", slug, `Removed a photo from ${vehicle.car.name}`, requestId);
+  refreshPublicFleet();
+  revalidatePath(back);
+}
+
+/** Move one photo to the front: it becomes the card and gallery shot. */
+export async function makePhotoPrimaryAction(formData: FormData) {
+  const user = await requireStaff();
+  const slug = String(formData.get("slug") ?? "");
+  const publicId = String(formData.get("publicId") ?? "");
+  const back = `/panel/fleet/${slug}`;
+
+  const vehicle = await vehicleBySlug(slug);
+  if (!vehicle || !vehicle.car.images.includes(publicId)) return;
+
+  const requestId = await gate(
+    user, "fleet.photos", slug, back, "You need an open window for photos to change them.",
+  );
+
+  await updateVehicle(slug, {
+    images: [publicId, ...vehicle.car.images.filter((id) => id !== publicId)],
+  });
+  await audit(user.id, "vehicle.photo_primary", "vehicle", slug, `Changed the main photo of ${vehicle.car.name}`, requestId);
+
+  refreshPublicFleet();
+  revalidatePath(back);
 }
 
 /* -------------------------------------------------------------------------- */

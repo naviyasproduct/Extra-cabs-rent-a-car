@@ -234,9 +234,11 @@ are still static.
   with-driver rate. Those are set on create and then frozen. Adding them is
   mechanical now that an edit updates the `vehicles` row directly: a line in
   `updateVehicleAction()` and a control on the edit form.
-- **Photo upload is not built.** Vehicles show a placeholder tile until the
-  Cloudinary upload lands. `fleet.photos` exists as a scope with nothing
-  behind it.
+- **Photo upload is built** (2026-09-24): up to five per vehicle on the edit
+  screen, add, remove and "make main". Photos are their own permission,
+  `fleet.photos`, so an employee can be trusted with pictures without being
+  handed the rates. They live on Cloudinary as public ids; ID documents never
+  go there. Proven against the real account 2026-09-24.
 - **Break-glass access is not built.** If the owner is unreachable the employee
   is blocked, which is the open decision in HANDOVER section 7c.
 - **A booked vehicle 404s its own detail page.** It leaves the list, the

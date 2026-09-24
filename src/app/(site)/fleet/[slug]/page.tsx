@@ -19,6 +19,7 @@ import { JsonLd } from "@/components/common/JsonLd";
 import { breadcrumbLd, carLd } from "@/lib/seo";
 import { formatPrice } from "@/lib/utils";
 import { KM_PER_DAY } from "@/lib/pricing";
+import { cloudinaryUrl, isPublicId } from "@/lib/cloudinary";
 import { AvailabilityDot, Badge } from "@/components/ui/Badge";
 import { LinkButton } from "@/components/ui/Button";
 import { Grid, Section, SectionHeader, Shell } from "@/components/ui/Layout";
@@ -57,7 +58,10 @@ export async function generateMetadata({
       description,
       url: `/fleet/${car.slug}`,
       type: "website",
-      images: car.images.slice(0, 1).map((image) => ({ url: image })),
+      // Cloudinary serves a wide version for the link preview.
+      images: car.images.slice(0, 1).map((image) => ({
+        url: isPublicId(image) ? cloudinaryUrl(image, { width: 1200 }) : image,
+      })),
     },
   };
 }

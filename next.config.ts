@@ -17,9 +17,12 @@ const nextConfig: NextConfig = {
     },
   },
   images: {
-    // Local files only for now. Add remote CDN patterns here when the
-    // backend starts serving uploaded fleet photos.
-    remotePatterns: [],
+    // Vehicle photos come from Cloudinary. SafeImage attaches a Cloudinary
+    // loader for them, so Next's optimiser is bypassed and this pattern is a
+    // backstop for any plain <Image> pointed at a delivery URL.
+    remotePatterns: [
+      { protocol: "https", hostname: "res.cloudinary.com", pathname: "/**" },
+    ],
     // Capped at 1920. The defaults go up to 3840, which meant every cold load
     // of the hero paid to resize a 1920px source *up* to 4K for no visible
     // gain, slow enough that the image could miss the first paint.

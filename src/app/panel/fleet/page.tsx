@@ -26,12 +26,18 @@ export default async function PanelFleet({
   const showDeleted = show === "deleted";
 
   const vehicles = await staffVehicles(showDeleted);
-  const [open, pending, canCreate, canDelete] = await Promise.all([
+  const [open, pending, canCreate] = await Promise.all([
     user.role === "employee" ? openWindowFor(user.id) : null,
     user.role === "employee" ? pendingRequestFor(user.id) : null,
     canWrite(user, "fleet.create"),
-    canWrite(user, "fleet.delete"),
   ]);
+
+  // Per vehicle, from the one window already loaded above: a window granted
+  // for a single vehicle must show its own Remove button and nobody else's.
+  // Asking canWrite() once for the whole list answered "no" for every row.
+  const canDeleteVehicle = (slug: string) =>
+    user.role === "owner" ||
+    (open?.scope === "fleet.delete" && (open.targetSlug === null || open.targetSlug === slug));
 
   return (
     <div className="flex flex-col gap-8">
@@ -293,7 +299,7 @@ export default async function PanelFleet({
                       </form>
                     ) : null}
 
-                    {canDelete ? (
+                    {canDeleteVehicle(car.slug) ? (
                       <form action={deleteVehicleAction}>
                         <input type="hidden" name="slug" value={car.slug} />
                         <input

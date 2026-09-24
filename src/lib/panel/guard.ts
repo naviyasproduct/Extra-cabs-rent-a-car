@@ -69,10 +69,21 @@ export async function assertCanWrite(
   return open.id;
 }
 
-/** True when the employee could perform this write right now. */
-export async function canWrite(user: StaffUser, scope: WindowScope): Promise<boolean> {
+/**
+ * True when the employee could perform this write right now.
+ *
+ * Pass the vehicle when asking about one. A window opened for a single
+ * vehicle is refused for any other target, so asking without the slug would
+ * answer "no" for the very vehicle it was granted for, and the screen would
+ * hide controls the server would happily accept. Found 2026-09-24.
+ */
+export async function canWrite(
+  user: StaffUser,
+  scope: WindowScope,
+  targetSlug: string | null = null,
+): Promise<boolean> {
   try {
-    await assertCanWrite(user, scope);
+    await assertCanWrite(user, scope, targetSlug);
     return true;
   } catch {
     return false;

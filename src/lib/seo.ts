@@ -1,5 +1,6 @@
 import type { Car, Faq, Location, Service } from "@/types";
 import { site, siteUrl } from "@/lib/data/site";
+import { cloudinaryUrl, isPublicId } from "@/lib/cloudinary";
 
 /**
  * Structured data builders.
@@ -134,7 +135,8 @@ export function carLd(car: Car) {
     name: car.name,
     description: car.description,
     url: absoluteUrl(`/fleet/${car.slug}`),
-    image: car.images.map((image) => absoluteUrl(image)),
+    // A vehicle photo is a Cloudinary public id; anything else is a local path.
+    image: car.images.map((image) => (isPublicId(image) ? cloudinaryUrl(image, { width: 1200 }) : absoluteUrl(image))),
     sku: car.slug,
     brand: { "@type": "Brand", name: car.brand },
     model: car.name,
