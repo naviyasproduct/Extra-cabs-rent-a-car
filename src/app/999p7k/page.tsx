@@ -1,25 +1,18 @@
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { Lock } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Field, Input } from "@/components/ui/Field";
-import {
-  SESSION_COOKIE,
-  SESSION_MAX_AGE,
-  attemptSignIn,
-  createSessionValue,
-  getCurrentUser,
-} from "@/lib/panel/auth";
+import { getCurrentUser, signIn as signInWithSupabase } from "@/lib/panel/auth";
 import { openShift } from "@/lib/panel/time";
 
 /**
- * Staff sign-in.
+ * Staff sign-in. Supabase Auth since 2026-09-22.
  *
  * The route is deliberately obscure and carries `noindex`, and robots.ts
  * disallows /panel. That is not security, it just keeps the door off search
- * results. The actual protection is the session check in proxy.ts and the
- * guards next to the data.
+ * results. The protection is Supabase Auth plus the active staff row checked
+ * on every request (lib/panel/auth.ts), and the guards next to the data.
  */
 export const metadata: Metadata = {
   title: "Sign in",
@@ -32,19 +25,11 @@ async function signIn(formData: FormData) {
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
 
-  const result = attemptSignIn(email, password);
-  if (!result.ok || !result.staffId) {
+  // Sets the Supabase session cookies on success.
+  const result = await signInWithSupabase(email, password);
+  if (!result.ok || !result.user) {
     redirect(`/999p7k?error=${encodeURIComponent(result.error ?? "Sign in failed")}`);
   }
-
-  const jar = await cookies();
-  jar.set(SESSION_COOKIE, createSessionValue(result.staffId), {
-    httpOnly: true,
-    sameSite: "lax",
-    secure: process.env.NODE_ENV === "production",
-    path: "/",
-    maxAge: SESSION_MAX_AGE,
-  });
 
   // Signing in IS the start of the shift. The plan wants one deliberate act,
   // not a sign-in followed by a separate clock-in nobody remembers to press.
@@ -52,7 +37,7 @@ async function signIn(formData: FormData) {
   // For the owner this does nothing at all: he is not on a timesheet, and
   // openShift refuses him rather than this call site testing the role. One
   // rule, in one place, covering every entry point.
-  openShift(result.staffId);
+  await openShift(result.user);
 
   redirect("/panel");
 }

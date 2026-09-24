@@ -1,94 +1,80 @@
-import crypto from "node:crypto";
-import { cookies } from "next/headers";
-import { readData, verifyPassword } from "./store";
+import "server-only";
+import { cache } from "react";
+import { authClient } from "@/lib/supabase/server";
+import { getStaff, getStaffByEmail } from "./db";
 import type { Role, StaffUser } from "./types";
 
 /**
- * Sessions.
+ * Who is signed in. Supabase Auth since 2026-09-22.
  *
- * A signed cookie holding the staff id and an expiry. The signature is an
- * HMAC over the payload, so the cookie cannot be edited to become somebody
- * else. There is no session table: with the store reset on redeploy that would
- * add bookkeeping without adding safety at this stage.
+ * Supabase Auth owns passwords and sessions; the `staff` table owns who may
+ * use the panel. BOTH must agree on every request: a valid Supabase session
+ * with no staff row, or a disabled one, is no session at all. So disabling an
+ * employee in /panel/team locks them out on their very next click, without
+ * waiting for their session to expire.
  *
- * Real authorisation is done by the guards in guard.ts, next to the data.
- * proxy.ts only does the cheap cookie check, per the Next.js guidance in
- * docs/HANDOVER.md section 3.
+ * getClaims() verifies the session token's signature rather than trusting the
+ * cookie's contents, which is what Supabase's own docs require before a
+ * session is believed on the server.
  */
 
-export const SESSION_COOKIE = "ec_panel";
-const SESSION_HOURS = 12;
+/**
+ * The signed-in staff member, or null. Memoised for the length of one request,
+ * so a page, its layout and its actions ask Supabase once between them.
+ */
+export const getCurrentUser = cache(async (): Promise<StaffUser | null> => {
+  const supabase = await authClient();
+  const { data, error } = await supabase.auth.getClaims();
+  const userId = data?.claims?.sub;
+  if (error || typeof userId !== "string") return null;
 
-function secret(): string {
-  return process.env.PANEL_SESSION_SECRET ?? "extra-cabs-dev-secret-change-me";
-}
-
-function sign(payload: string): string {
-  return crypto.createHmac("sha256", secret()).update(payload).digest("hex");
-}
-
-export function createSessionValue(staffId: string): string {
-  const expiresAt = Date.now() + SESSION_HOURS * 60 * 60 * 1000;
-  const payload = `${staffId}.${expiresAt}`;
-  return `${payload}.${sign(payload)}`;
-}
-
-/** Returns the staff id, or null if the cookie is missing, edited or expired. */
-export function readSessionValue(value: string | undefined): string | null {
-  if (!value) return null;
-
-  const parts = value.split(".");
-  if (parts.length !== 3) return null;
-
-  const [staffId, expiresAt, signature] = parts;
-  const payload = `${staffId}.${expiresAt}`;
-
-  const expected = Buffer.from(sign(payload));
-  const given = Buffer.from(signature);
-  if (expected.length !== given.length) return null;
-  if (!crypto.timingSafeEqual(expected, given)) return null;
-
-  if (Number(expiresAt) < Date.now()) return null;
-
-  return staffId;
-}
-
-export const SESSION_MAX_AGE = SESSION_HOURS * 60 * 60;
-
-/* -------------------------------------------------------------------------- */
-/* The data access layer                                                       */
-/* -------------------------------------------------------------------------- */
-
-/** The signed-in user, or null. Every panel page starts here. */
-export async function getCurrentUser(): Promise<StaffUser | null> {
-  const jar = await cookies();
-  const staffId = readSessionValue(jar.get(SESSION_COOKIE)?.value);
-  if (!staffId) return null;
-
-  const user = readData().staff.find((s) => s.id === staffId);
-  if (!user || !user.active) return null;
-
-  return user;
-}
+  const staff = await getStaff(userId);
+  if (!staff || !staff.active) return null;
+  return staff;
+});
 
 export interface SignInResult {
   ok: boolean;
-  staffId?: string;
+  user?: StaffUser;
   error?: string;
 }
 
-export function attemptSignIn(email: string, password: string): SignInResult {
-  const target = email.trim().toLowerCase();
-  const user = readData().staff.find((s) => s.email === target);
+/** Same message for every failure, so the form cannot reveal which emails have accounts. */
+const GENERIC = "That email and password do not match an account.";
 
-  // Same message either way, so the form cannot be used to discover which
-  // addresses have accounts.
-  const generic = "That email and password do not match an account.";
+export async function signIn(email: string, password: string): Promise<SignInResult> {
+  const address = email.trim().toLowerCase();
+  if (!address || !password) return { ok: false, error: GENERIC };
 
-  if (!user || !user.active) return { ok: false, error: generic };
-  if (!verifyPassword(password, user)) return { ok: false, error: generic };
+  const supabase = await authClient();
+  const { data, error } = await supabase.auth.signInWithPassword({ email: address, password });
+  if (error || !data.user) {
+    // Supabase rate-limits repeated attempts on its own; say so rather than
+    // letting "wrong password" hide a lockout.
+    if (error?.status === 429) {
+      return { ok: false, error: "Too many attempts. Wait a few minutes and try again." };
+    }
+    return { ok: false, error: GENERIC };
+  }
 
-  return { ok: true, staffId: user.id };
+  // A real Supabase login is not enough: it must be an active staff account.
+  const staff = await getStaff(data.user.id);
+  if (!staff || !staff.active) {
+    await supabase.auth.signOut();
+    return { ok: false, error: GENERIC };
+  }
+
+  return { ok: true, user: staff };
+}
+
+export async function signOut(): Promise<void> {
+  const supabase = await authClient();
+  await supabase.auth.signOut();
+}
+
+/** For the owner's create-account form: is this address already taken? */
+export async function emailHasAccount(email: string): Promise<boolean> {
+  return (await getStaffByEmail(email)) !== null;
 }
 
 export function isOwner(user: StaffUser | null): boolean {

@@ -1,72 +1,30 @@
+import "server-only";
 import { connection } from "next/server";
 import type { Car, CarCategory } from "@/types";
 import { MAX_VEHICLE_FEATURES, MAX_VEHICLE_IMAGES } from "@/types";
-import { getCars as catalogueCars } from "@/lib/data/cars";
-import { readData } from "@/lib/panel/store";
-import type { CreatedVehicle, VehicleOverride } from "@/lib/panel/types";
+import { listVehicleRecords, getVehicleRecord } from "@/lib/panel/db";
+import type { VehicleRecord } from "@/lib/panel/types";
 
 /**
- * The live fleet: the shipped catalogue with the panel's edits layered on top.
+ * The live fleet, from the `vehicles` table.
  *
- * SERVER ONLY. It reads the panel store, which touches node:fs.
- * `src/lib/data/cars.ts` stays pure so client components can keep importing
- * `filterCars` and the category helpers from it.
+ * SERVER ONLY. `src/lib/data/cars.ts` stays pure so client components can keep
+ * importing `filterCars` and the category helpers from it. Its catalogue is
+ * empty: every vehicle is added by staff in the panel, so there is no longer
+ * an override layer to merge.
  *
- * REQUEST TIME, NOT BUILD TIME. The store is a synchronous file read, which
- * happily completes during prerendering, so without connection() Next bakes
- * the fleet into static HTML at build and the site never sees a panel edit
- * again. Calling connection() in these readers opts every page that shows
- * fleet data out of prerendering automatically, including pages added later.
- * That is deliberately here rather than `export const dynamic` on six separate
- * routes, which is six chances to forget.
+ * REQUEST TIME, NOT BUILD TIME. connection() in the public readers opts every
+ * page that shows fleet data out of prerendering, so a change in the panel
+ * shows on the next request, including pages added later.
  *
  * Two audiences, and the difference matters:
  *   listVehicles()   everything a staff member should see, including vehicles
- *                    that are out on hire and (optionally) deleted ones.
+ *                    that are out on hire and deleted ones.
  *   publicCars()     what a customer sees. A vehicle marked booked or deleted
  *                    is not in the list at all.
  */
 
-function applyOverride(car: Car, override: VehicleOverride | undefined): Car {
-  if (!override) return car;
-
-  return {
-    ...car,
-    name: override.name ?? car.name,
-    // Customer-facing copy. An empty string or an empty list is a real value
-    // here: it means the owner cleared the box. So these use ?? rather than a
-    // truthiness test, and only an absent override falls back to the catalogue.
-    tagline: override.tagline ?? car.tagline,
-    description: override.description ?? car.description,
-    features: override.features ?? car.features,
-    available: override.available ?? car.available,
-    featured: override.featured ?? car.featured,
-    specs: {
-      ...car.specs,
-      seats: override.seats ?? car.specs.seats,
-      doors: override.doors ?? car.specs.doors,
-      fuel: override.fuel ?? car.specs.fuel,
-      hybrid: override.hybrid ?? car.specs.hybrid,
-    },
-    pricing: {
-      daily: override.daily ?? car.pricing.daily,
-      // Tier by tier, so an override that only knows some rates still
-      // inherits the rest from the catalogue.
-      tiers: { ...car.pricing.tiers, ...override.tiers },
-      deposit: override.deposit ?? car.pricing.deposit,
-      // undefined means "not overridden"; null is a real value meaning the
-      // owner cleared the rate. Same rule as withDriverDaily below.
-      extraKm:
-        override.extraKm !== undefined ? override.extraKm : car.pricing.extraKm,
-      withDriverDaily:
-        override.withDriverDaily !== undefined
-          ? override.withDriverDaily
-          : car.pricing.withDriverDaily,
-    },
-  };
-}
-
-function createdToCar(vehicle: CreatedVehicle): Car {
+function recordToCar(vehicle: VehicleRecord): Car {
   return {
     id: vehicle.slug,
     slug: vehicle.slug,
@@ -90,7 +48,7 @@ function createdToCar(vehicle: CreatedVehicle): Car {
       daily: vehicle.daily,
       tiers: vehicle.tiers,
       deposit: vehicle.deposit,
-      extraKm: vehicle.extraKm ?? null,
+      extraKm: vehicle.extraKm,
       withDriverDaily: vehicle.withDriverDaily,
     },
     features: vehicle.features.slice(0, MAX_VEHICLE_FEATURES),
@@ -103,34 +61,14 @@ function createdToCar(vehicle: CreatedVehicle): Car {
 export interface LiveVehicle {
   car: Car;
   deletedAt: string | null;
-  /** True when it came from the panel rather than the shipped catalogue. */
-  addedInPanel: boolean;
 }
 
 /** Everything, including hidden and deleted. Panel use. */
 export async function listVehicles(): Promise<LiveVehicle[]> {
-  const data = readData();
-  const catalogue = await catalogueCars();
-
-  const fromCatalogue: LiveVehicle[] = catalogue.map((car) => {
-    const override = data.vehicleOverrides[car.slug];
-    return {
-      car: applyOverride(car, override),
-      deletedAt: override?.deletedAt ?? null,
-      addedInPanel: false,
-    };
-  });
-
-  const fromPanel: LiveVehicle[] = data.createdVehicles.map((vehicle) => {
-    const override = data.vehicleOverrides[vehicle.slug];
-    return {
-      car: applyOverride(createdToCar(vehicle), override),
-      deletedAt: override?.deletedAt ?? vehicle.deletedAt,
-      addedInPanel: true,
-    };
-  });
-
-  return [...fromPanel, ...fromCatalogue];
+  return (await listVehicleRecords()).map((vehicle) => ({
+    car: recordToCar(vehicle),
+    deletedAt: vehicle.deletedAt,
+  }));
 }
 
 /** Staff view: live vehicles, deleted ones excluded unless asked for. */
@@ -139,22 +77,23 @@ export async function staffVehicles(includeDeleted = false): Promise<LiveVehicle
   return includeDeleted ? all : all.filter((v) => v.deletedAt === null);
 }
 
-/**
- * Customer view.
- *
- * A vehicle that is out on hire or deleted does not appear at all. This is what
- * "mark it booked and it drops off the site" means: not a badge, an absence.
- */
+/** Panel lookup: finds hidden and deleted vehicles too. */
+export async function vehicleBySlug(slug: string): Promise<LiveVehicle | null> {
+  const vehicle = await getVehicleRecord(slug);
+  return vehicle ? { car: recordToCar(vehicle), deletedAt: vehicle.deletedAt } : null;
+}
+
 /**
  * The customer-visible list, without the request-time marker.
  *
- * Private, because build-time callers need it and page callers must not use it.
+ * A vehicle that is out on hire or deleted does not appear at all. This is what
+ * "mark it booked and it drops off the site" means: not a badge, an absence.
+ *
+ * Private, because the sitemap needs it without connection().
  */
 async function listedCars(): Promise<Car[]> {
   const all = await listVehicles();
-  return all
-    .filter((v) => v.deletedAt === null && v.car.available)
-    .map((v) => v.car);
+  return all.filter((v) => v.deletedAt === null && v.car.available).map((v) => v.car);
 }
 
 export async function publicCars(): Promise<Car[]> {
@@ -164,16 +103,16 @@ export async function publicCars(): Promise<Car[]> {
 
 export async function publicCarBySlug(slug: string): Promise<Car | null> {
   await connection();
-  return (await listedCars()).find((car) => car.slug === slug) ?? null;
+  const found = await vehicleBySlug(slug);
+  if (!found || found.deletedAt !== null || !found.car.available) return null;
+  return found.car;
 }
 
 /**
- * Build-time only: generateStaticParams and the sitemap.
+ * For the sitemap, which revalidates on its own schedule.
  *
- * Deliberately WITHOUT connection(). Those run during the build, where there is
- * no request to wait for, so calling it there would be wrong. Slugs are also
- * the one thing that is safe to precompute: the page body still reads live data
- * per request, and an unknown slug renders on demand anyway.
+ * Deliberately WITHOUT connection(): the sitemap is regenerated in the
+ * background, where there is no request to wait for.
  */
 export async function publicCarSlugs(): Promise<string[]> {
   return (await listedCars()).map((car) => car.slug);
@@ -219,10 +158,4 @@ export async function publicCategoryCounts(): Promise<Record<string, number>> {
     },
     { all: 0 },
   );
-}
-
-/** Panel lookup: finds hidden and deleted vehicles too. */
-export async function vehicleBySlug(slug: string): Promise<LiveVehicle | null> {
-  const all = await listVehicles();
-  return all.find((v) => v.car.slug === slug) ?? null;
 }

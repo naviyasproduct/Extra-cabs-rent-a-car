@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, CircleAlert, CircleCheck, Lock } from "lucide-react";
 import { requireStaff, canWrite } from "@/lib/panel/guard";
 import { vehicleBySlug } from "@/lib/fleet";
-import { readData } from "@/lib/panel/store";
+import { auditForEntity, listStaff } from "@/lib/panel/db";
 import { colomboDateTime } from "@/lib/panel/time";
 import { MAX_VEHICLE_FEATURES } from "@/types";
 import { RateEditor } from "@/components/panel/RateEditor";
@@ -26,15 +26,17 @@ export default async function PanelVehicle({
   if (!vehicle) notFound();
 
   const { car } = vehicle;
-  const editable = canWrite(user, "fleet.update") || canWrite(user, "pricing.update");
-
-  const history = readData()
-    .audit.filter((a) => a.entity === "vehicle" && a.entityId === slug)
-    .slice(-10)
-    .reverse();
+  const [canUpdate, canPrice, history, staff] = await Promise.all([
+    canWrite(user, "fleet.update"),
+    canWrite(user, "pricing.update"),
+    // The ten most recent changes to this vehicle, newest first.
+    auditForEntity("vehicle", slug, 10),
+    listStaff(),
+  ]);
+  const editable = canUpdate || canPrice;
 
   const staffName = (id: string) =>
-    readData().staff.find((s) => s.id === id)?.name ?? "Unknown";
+    id === "system" ? "Automatic" : (staff.find((s) => s.id === id)?.name ?? "Unknown");
 
   return (
     <div className="flex flex-col gap-8">

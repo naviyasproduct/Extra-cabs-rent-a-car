@@ -1,6 +1,13 @@
 import { CircleAlert, KeyRound, MessageSquare, UserPlus } from "lucide-react";
 import { requireOwner } from "@/lib/panel/guard";
-import { readData } from "@/lib/panel/store";
+import { cookies } from "next/headers";
+import {
+  allShifts,
+  countAudit,
+  listSmsMessages,
+  listStaff,
+  segmentsForShifts,
+} from "@/lib/panel/db";
 import {
   colomboDate,
   colomboDateTime,
@@ -32,64 +39,67 @@ export const metadata = { title: "Team" };
 export default async function PanelTeam({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; created?: string; date?: string }>;
+  searchParams: Promise<{ error?: string; date?: string }>;
 }) {
-  const { error, created, date } = await searchParams;
+  const { error, date } = await searchParams;
   await requireOwner();
 
-  const data = readData();
   const day = date ?? colomboDate();
-  const summaries = shiftsForDate(day);
+  const [staff, summaries, shifts, recentMessages] = await Promise.all([
+    listStaff(),
+    shiftsForDate(day),
+    allShifts(),
+    listSmsMessages(8),
+  ]);
+  const presence = await segmentsForShifts(shifts.map((s) => s.id));
 
   const nameFor = (staffId: string) =>
-    data.staff.find((s) => s.id === staffId)?.name ?? "Unknown";
+    staff.find((s) => s.id === staffId)?.name ?? "Unknown";
 
-  const justCreated = created
-    ? data.staff.find((s) => s.id === created)
-    : undefined;
+  // The account just created, with its one-time password, from a short-lived
+  // httpOnly cookie set by createStaffAction. Never from the database, where
+  // the password is not kept, and never from the URL.
+  const justCreated = readNewStaff((await cookies()).get(NEW_STAFF_COOKIE)?.value);
 
   // Booking alerts. Everyone is listed, the owner included: this is a
   // notification, not the timesheet, so the owner/employee split does not
   // apply here. See notify.ts.
   const { ready: smsReady } = smsConfig();
-  const recentMessages = (data.messages ?? []).slice(0, 8);
-  const alertCount = data.staff.filter(
+  const alertCount = staff.filter(
     (s) => s.active && s.smsAlerts !== false && toMsisdn(s.phone ?? "") !== null,
   ).length;
 
   // Lifetime totals per person, so the owner has more than one day to look at.
   // Employees only: the owner keeps no shift and no presence record, so he has
-  // no row here. See tracksTime() in lib/panel/time.ts.
-  const totals = data.staff
-    .filter((staff) => staff.role !== "owner")
-    .map((staff) => {
-      const shifts = data.shifts.filter((s) => s.staffId === staff.id);
-      const summed = shifts.map((s) => summariseShift(s, data.presence));
+  // no row here. See isTimeTracked() in lib/panel/time.ts.
+  const totals = await Promise.all(
+    staff
+      .filter((person) => person.role !== "owner")
+      .map(async (person) => {
+        const theirs = shifts.filter((s) => s.staffId === person.id);
+        const summed = theirs.map((s) => summariseShift(s, presence));
 
-      const claimed = summed.reduce((n, s) => n + s.claimedSeconds, 0);
-      const present = summed.reduce((n, s) => n + s.presentSeconds, 0);
-      const replies = data.audit.filter(
-        (a) => a.staffId === staff.id && a.action === "enquiry.replied",
-      ).length;
-      const bookingsHandled = data.audit.filter(
-        (a) => a.staffId === staff.id && a.entity === "booking",
-      ).length;
-      const fleetEdits = data.audit.filter(
-        (a) => a.staffId === staff.id && a.entity === "vehicle",
-      ).length;
+        const claimed = summed.reduce((n, s) => n + s.claimedSeconds, 0);
+        const present = summed.reduce((n, s) => n + s.presentSeconds, 0);
+        const [replies, bookingsHandled, fleetEdits] = await Promise.all([
+          countAudit({ staffId: person.id, action: "enquiry.replied" }),
+          countAudit({ staffId: person.id, entity: "booking" }),
+          countAudit({ staffId: person.id, entity: "vehicle" }),
+        ]);
 
-      return {
-        staff,
-        shifts: shifts.length,
-        claimed,
-        present,
-        coverage: claimed > 0 ? Math.round((present / claimed) * 100) : 0,
-        flagged: summed.filter((s) => s.flagged).length,
-        replies,
-        bookingsHandled,
-        fleetEdits,
-      };
-    });
+        return {
+          staff: person,
+          shifts: theirs.length,
+          claimed,
+          present,
+          coverage: claimed > 0 ? Math.round((present / claimed) * 100) : 0,
+          flagged: summed.filter((s) => s.flagged).length,
+          replies,
+          bookingsHandled,
+          fleetEdits,
+        };
+      }),
+  );
 
   return (
     <div className="flex flex-col gap-10">
@@ -109,7 +119,7 @@ export default async function PanelTeam({
         </p>
       ) : null}
 
-      {justCreated?.oneTimePassword ? (
+      {justCreated ? (
         <section className="bg-warning/12 p-5">
           <h2 className="inline-flex items-center gap-2 font-display text-sm font-bold uppercase tracking-[0.14em] text-warning">
             <KeyRound className="size-4" aria-hidden />
@@ -121,10 +131,9 @@ export default async function PanelTeam({
             and make another.
           </p>
           <p className="mt-3 font-display text-3xl font-bold tracking-[0.15em] text-ink">
-            {justCreated.oneTimePassword}
+            {justCreated.password}
           </p>
           <form action={dismissOneTimePasswordAction} className="mt-4">
-            <input type="hidden" name="id" value={justCreated.id} />
             <button
               type="submit"
               className="rounded-full bg-field px-4 py-2.5 text-sm font-semibold transition-colors hover:bg-field-hover"
@@ -248,7 +257,7 @@ export default async function PanelTeam({
         ) : null}
 
         <ul className="mt-4 flex flex-col">
-          {data.staff.map((staff) => {
+          {staff.map((staff) => {
             const msisdn = toMsisdn(staff.phone ?? "");
             const on = staff.active && staff.smsAlerts !== false && msisdn !== null;
 
@@ -426,4 +435,26 @@ export default async function PanelTeam({
       </section>
     </div>
   );
+}
+
+/** Must match createStaffAction in ../actions.ts. */
+const NEW_STAFF_COOKIE = "ec_new_staff";
+
+function readNewStaff(
+  raw: string | undefined,
+): { id: string; name: string; email: string; password: string } | null {
+  if (!raw) return null;
+  try {
+    const value = JSON.parse(raw) as Record<string, unknown>;
+    return typeof value.password === "string" && typeof value.name === "string"
+      ? {
+          id: String(value.id ?? ""),
+          name: value.name,
+          email: String(value.email ?? ""),
+          password: value.password,
+        }
+      : null;
+  } catch {
+    return null;
+  }
 }

@@ -1,9 +1,9 @@
 import { CircleAlert, FileText, Trash2 } from "lucide-react";
 import { slotLabels } from "@/lib/panel/uploads";
 import { requireStaff, canWrite } from "@/lib/panel/guard";
-import { readData } from "@/lib/panel/store";
+import { listBookings, listStaff } from "@/lib/panel/db";
 import { colomboDateTime } from "@/lib/panel/time";
-import { purgeExpiredDocuments } from "@/lib/panel/retention";
+import { runRetention } from "@/lib/panel/retention";
 import {
   HIRED_RETENTION_DAYS,
   UNHIRED_RETENTION_DAYS,
@@ -37,19 +37,27 @@ export default async function PanelBookings({
 }) {
   const { error } = await searchParams;
   const user = await requireStaff();
-  // The retention rule runs here because there is no scheduler yet. It must
-  // run before readData() so this screen never lists a photo it just deleted.
-  purgeExpiredDocuments();
-  const data = readData();
-  const vehicles = await listVehicles();
+  // The retention rule runs here as well as on its daily schedule. It runs
+  // before the list is read, so this screen never links a photo it just
+  // deleted. A failure is logged, not thrown: staff must still see bookings
+  // if a storage call hiccups, and the next load or the schedule retries.
+  try {
+    await runRetention();
+  } catch (retentionError) {
+    console.error(`[retention] ${(retentionError as Error).message}`);
+  }
+  const [bookings, staff, vehicles, canDelete] = await Promise.all([
+    listBookings(),
+    listStaff(),
+    listVehicles(),
+    canWrite(user, "booking.delete"),
+  ]);
 
   const nameFor = (slug: string | null) =>
     vehicles.find((v) => v.car.slug === slug)?.car.name ?? "No vehicle chosen";
 
   const staffName = (id: string | null) =>
-    id ? (data.staff.find((s) => s.id === id)?.name ?? "Unknown") : "Nobody yet";
-
-  const canDelete = canWrite(user, "booking.delete");
+    id ? (staff.find((s) => s.id === id)?.name ?? "Unknown") : "Nobody yet";
 
   return (
     <div className="flex flex-col gap-8">
@@ -75,7 +83,7 @@ export default async function PanelBookings({
         </p>
       ) : null}
 
-      {data.bookings.length === 0 ? (
+      {bookings.length === 0 ? (
         <p className="bg-tile p-6 text-sm text-muted">
           No bookings yet. One made through the website booking form, or
           taken by phone, will appear here.
@@ -83,7 +91,7 @@ export default async function PanelBookings({
       ) : null}
 
       <div className="flex flex-col gap-px bg-line">
-        {data.bookings.map((booking) => {
+        {bookings.map((booking) => {
           const status = STATUSES.find((s) => s.id === booking.status);
 
           return (

@@ -26,11 +26,12 @@ export default async function PanelFleet({
   const showDeleted = show === "deleted";
 
   const vehicles = await staffVehicles(showDeleted);
-  const open = user.role === "employee" ? openWindowFor(user.id) : null;
-  const pending = user.role === "employee" ? pendingRequestFor(user.id) : null;
-
-  const canCreate = canWrite(user, "fleet.create");
-  const canDelete = canWrite(user, "fleet.delete");
+  const [open, pending, canCreate, canDelete] = await Promise.all([
+    user.role === "employee" ? openWindowFor(user.id) : null,
+    user.role === "employee" ? pendingRequestFor(user.id) : null,
+    canWrite(user, "fleet.create"),
+    canWrite(user, "fleet.delete"),
+  ]);
 
   return (
     <div className="flex flex-col gap-8">
@@ -238,7 +239,7 @@ export default async function PanelFleet({
             </tr>
           </thead>
           <tbody>
-            {vehicles.map(({ car, deletedAt, addedInPanel }) => (
+            {vehicles.map(({ car, deletedAt }) => (
               <tr key={car.slug} className="border-b border-line-strong/30">
                 <td className="py-3 pr-4">
                   <Link
@@ -249,7 +250,6 @@ export default async function PanelFleet({
                   </Link>
                   <p className="mt-0.5 text-xs text-muted">
                     {car.category}
-                    {addedInPanel ? " · added here" : ""}
                     {deletedAt ? " · removed" : ""}
                   </p>
                 </td>

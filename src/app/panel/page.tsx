@@ -8,7 +8,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { requireStaff } from "@/lib/panel/guard";
-import { readData } from "@/lib/panel/store";
+import { listAudit, listBookings, listEnquiries, listStaff } from "@/lib/panel/db";
 import {
   colomboDate,
   colomboDateTime,
@@ -27,26 +27,33 @@ export const metadata = { title: "Today" };
 
 export default async function PanelHome() {
   const user = await requireStaff();
-  const data = readData();
   const today = colomboDate();
 
+  const [staff, bookings, enquiries, allToday, present, requests, recent] = await Promise.all([
+    listStaff(),
+    listBookings(),
+    listEnquiries(),
+    shiftsForDate(today),
+    whoIsPresent(),
+    user.role === "owner" ? liveRequests() : Promise.resolve([]),
+    // Same rule as /panel/activity: an employee sees only their own entries.
+    // This list used to show everyone's, which the activity page does not.
+    listAudit({ staffId: user.role === "owner" ? undefined : user.id, limit: 8 }),
+  ]);
+
   const nameFor = (staffId: string) =>
-    data.staff.find((s) => s.id === staffId)?.name ?? "Unknown";
+    staffId === "system" ? "Automatic" : (staff.find((s) => s.id === staffId)?.name ?? "Unknown");
 
   // An employee sees only their own hours. The owner sees everyone.
-  const allToday = shiftsForDate(today);
   const summaries =
     user.role === "owner"
       ? allToday
       : allToday.filter((s) => s.shift.staffId === user.id);
 
-  const present = whoIsPresent();
-  const requests = user.role === "owner" ? liveRequests() : [];
+  const pendingBookings = bookings.filter((b) => b.status === "pending");
+  const openEnquiries = enquiries.filter((e) => e.status === "open");
 
-  const pendingBookings = data.bookings.filter((b) => b.status === "pending");
-  const openEnquiries = data.enquiries.filter((e) => e.status === "open");
-
-  const confirmedValue = data.bookings
+  const confirmedValue = bookings
     .filter((b) => b.status !== "cancelled")
     .reduce((sum, b) => sum + b.amount, 0);
 
@@ -180,7 +187,7 @@ export default async function PanelHome() {
 
         {/* The owner is not on the timesheet, so say so rather than leaving
             him to wonder why he is missing from his own day. */}
-        {!isTimeTracked(user.id) ? (
+        {!isTimeTracked(user) ? (
           <p className="mt-3 max-w-[62ch] text-xs leading-relaxed text-muted">
             You are not on the timesheet. No shift and no presence is recorded
             for your account, which is why you do not appear above.
@@ -212,10 +219,7 @@ export default async function PanelHome() {
           Latest activity
         </h2>
         <ul className="mt-4 flex flex-col">
-          {data.audit
-            .slice(-8)
-            .reverse()
-            .map((entry) => (
+          {recent.map((entry) => (
               <li
                 key={entry.id}
                 className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-line py-2.5 first:border-t-0"
@@ -231,7 +235,7 @@ export default async function PanelHome() {
                 </span>
               </li>
             ))}
-          {data.audit.length === 0 ? (
+          {recent.length === 0 ? (
             <li className="py-3 text-sm text-muted">Nothing has happened yet.</li>
           ) : null}
         </ul>

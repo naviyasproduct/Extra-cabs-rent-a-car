@@ -1,26 +1,26 @@
 /**
  * Internal platform domain types.
  *
- * Mirrors the data model in docs/internal-platform-plan.md section 9. When
- * Supabase lands these become table rows; the shapes should not need to change.
+ * These are the Supabase tables in supabase/migrations/, in the camelCase the
+ * app uses. src/lib/panel/db.ts converts between the two; nothing else talks
+ * to the tables.
  */
 
 import type { IdDocumentType, UploadedDocument } from "@/types/booking";
 
 export type Role = "owner" | "employee";
 
+/**
+ * A panel account. The id is the Supabase Auth user id; the password lives in
+ * Supabase Auth and never in this table.
+ */
 export interface StaffUser {
   id: string;
   name: string;
   email: string;
   role: Role;
-  /** scrypt. The plaintext never reaches the store. */
-  passwordHash: string;
-  passwordSalt: string;
   active: boolean;
   createdAt: string;
-  /** Shown once when the owner creates an account, then cleared. */
-  oneTimePassword: string | null;
   /**
    * Mobile number, as the person typed it. Normalised to 94XXXXXXXXX only at
    * the moment of sending, so what the owner entered is what he sees again.
@@ -163,10 +163,9 @@ export interface PanelBooking {
   /** Which identity document the customer chose to send. */
   idType: IdDocumentType;
   /**
-   * Identity documents, metadata only. The bytes live in .data/uploads via
-   * lib/panel/uploads.ts and are served solely by /api/panel/documents/[id],
-   * which requires a staff session. Never put an image in this store: the
-   * whole JSON file is read and rewritten on every request.
+   * Identity documents, metadata only. The bytes live in the private
+   * id-documents bucket via lib/panel/uploads.ts and are served solely by
+   * /api/panel/documents/[id], which requires a staff session.
    */
   documents: UploadedDocument[];
   /**
@@ -240,44 +239,13 @@ export type PanelRateTiers = Record<
 >;
 
 /**
- * Changes layered over the static fleet in src/lib/data/cars.ts.
+ * One vehicle: a row of the `vehicles` table.
  *
- * The catalogue file stays untouched so the panel never has to rewrite source
- * code. Only the fields a person can actually edit live here.
+ * Every vehicle is added by staff in the panel. The catalogue in
+ * src/lib/data/cars.ts ships empty, so there is no override layer: an edit
+ * updates this record directly.
  */
-export interface VehicleOverride {
-  name?: string;
-  /** One-line hook under the vehicle name. */
-  tagline?: string;
-  /** The "About this vehicle" paragraph. */
-  description?: string;
-  /** The "Features and equipment" list, in display order. */
-  features?: string[];
-  available?: boolean;
-  featured?: boolean;
-  daily?: number;
-  /** Merged over the vehicle's own tiers, so a partial set is valid. */
-  tiers?: Partial<PanelRateTiers>;
-  /** Legacy. Migrated into `tiers` by hydrate() and then removed. */
-  weekly?: number;
-  /** Legacy. Migrated into `tiers` by hydrate() and then removed. */
-  monthly?: number;
-  deposit?: number;
-  /** LKR per km beyond the allowance. Null clears it back to "ask us". */
-  extraKm?: number | null;
-  withDriverDaily?: number | null;
-  seats?: number;
-  doors?: number;
-  /** What the vehicle burns. Hybrid is a separate flag, not a fuel. */
-  fuel?: PanelFuel;
-  /** Petrol or diesel engine paired with an electric motor. */
-  hybrid?: boolean;
-  /** ISO timestamp. Soft delete: hidden everywhere, restorable for 30 days. */
-  deletedAt?: string | null;
-}
-
-/** A vehicle added through the panel rather than shipped in the catalogue. */
-export interface CreatedVehicle {
+export interface VehicleRecord {
   slug: string;
   name: string;
   brand: string;
@@ -299,19 +267,17 @@ export interface CreatedVehicle {
   engineCc: number;
   daily: number;
   tiers: PanelRateTiers;
-  /** Legacy. Migrated into `tiers` by hydrate() and then removed. */
-  weekly?: number;
-  /** Legacy. Migrated into `tiers` by hydrate() and then removed. */
-  monthly?: number;
   deposit: number;
   /** LKR per km beyond the allowance. Null until someone sets one. */
   extraKm: number | null;
   withDriverDaily: number | null;
+  /** Cloudinary public ids, in display order. */
   images: string[];
   available: boolean;
   featured: boolean;
   createdAt: string;
-  createdBy: string;
+  createdBy: string | null;
+  /** Soft delete: hidden everywhere, restorable. */
   deletedAt: string | null;
 }
 
@@ -352,19 +318,4 @@ export interface SmsMessage {
   /** Text.lk's uid. Quote this at them when a message goes missing. */
   providerId: string | null;
   error: string | null;
-}
-
-/* -------------------------------------------------------------------------- */
-
-export interface PanelData {
-  staff: StaffUser[];
-  shifts: WorkShift[];
-  presence: PresenceSegment[];
-  accessRequests: AccessRequest[];
-  audit: AuditEntry[];
-  bookings: PanelBooking[];
-  enquiries: Enquiry[];
-  vehicleOverrides: Record<string, VehicleOverride>;
-  createdVehicles: CreatedVehicle[];
-  messages: SmsMessage[];
 }

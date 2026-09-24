@@ -13,7 +13,7 @@ import { requireStaff } from "@/lib/panel/guard";
 import { roleLabel } from "@/lib/panel/auth";
 import { HEARTBEAT_SECONDS, currentShift } from "@/lib/panel/time";
 import { openWindowFor, pendingRequestFor } from "@/lib/panel/window";
-import { readData } from "@/lib/panel/store";
+import { countBookings, countEnquiries } from "@/lib/panel/db";
 import { Heartbeat } from "@/components/panel/Heartbeat";
 import { ShiftClock } from "@/components/panel/ShiftClock";
 import { WindowBanner } from "@/components/panel/WindowBanner";
@@ -45,14 +45,14 @@ export default async function PanelLayout({
 
   // Always null for the owner, who is not on a timesheet, so neither the
   // running clock nor the heartbeat mounts for him and his tab proves nothing.
-  // The rule lives in tracksTime() in lib/panel/time.ts, not here.
-  const shift = currentShift(user.id);
-  const openWindow = openWindowFor(user.id);
-  const pending = pendingRequestFor(user.id);
-
-  const data = readData();
-  const pendingBookings = data.bookings.filter((b) => b.status === "pending").length;
-  const openEnquiries = data.enquiries.filter((e) => e.status === "open").length;
+  // The rule lives in isTimeTracked() in lib/panel/time.ts, not here.
+  const [shift, openWindow, pending, pendingBookings, openEnquiries] = await Promise.all([
+    currentShift(user),
+    openWindowFor(user.id),
+    pendingRequestFor(user.id),
+    countBookings("pending"),
+    countEnquiries("open"),
+  ]);
 
   const links = nav.filter((item) => !item.ownerOnly || user.role === "owner");
 

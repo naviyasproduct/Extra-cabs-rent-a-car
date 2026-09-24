@@ -11,6 +11,6 @@ export async function POST() {
   const user = await getCurrentUser();
   if (!user) return new Response("no session", { status: 401 });
 
-  const recorded = recordHeartbeat(user.id);
+  const recorded = await recordHeartbeat(user);
   return Response.json({ recorded });
 }

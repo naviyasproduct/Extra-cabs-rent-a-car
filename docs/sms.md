@@ -18,10 +18,8 @@ Provider: **Text.lk**. API docs: <https://text.lk/docs/send-sms/>
 > (section 6), or blank `TEXTLK_API_TOKEN` and test with nothing sent
 > (section 5).
 >
-> The owner's mobile number is set on his account in
-> `.data/panel.json`. That file is gitignored and **the number is deliberately
-> not in `store.ts`**, so it is never committed. Deleting the store to reset it
-> loses the number; re-type it in `/panel/team`.
+> Staff mobile numbers live in the `staff` table in Supabase, typed in on
+> `/panel/team`. They are never in the code or the repo.
 
 ---
 

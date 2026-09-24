@@ -19,7 +19,7 @@ The project has **two halves**:
 | Half | State | Lives at |
 | --- | --- | --- |
 | **Public website** - what customers see | Built, UI-only, deployed on Vercel | `/`, `/fleet`, `/booking`, `/services`, `/about`, `/contact`, `/faq` |
-| **Internal platform** - what the owner and 2 employees use | **Built and working** against a local store, no Supabase yet. See [`panel.md`](./panel.md) | `/999p7k` to sign in, `/panel` |
+| **Internal platform** - what the owner and 2 employees use | **Built and working on Supabase** (Postgres, Auth, private Storage) since 2026-09-22. See [`panel.md`](./panel.md) | `/999p7k` to sign in, `/panel` |
 
 The agency is **one owner + two employees**. The internal platform is the
 current piece of work. Its full spec is in
@@ -35,9 +35,12 @@ current piece of work. Its full spec is in
   bookings and enquiries staff can act on.
 - **The staff panel is built and working.** Sign in at `/999p7k`. Full
   description, test accounts and limits in [`panel.md`](./panel.md).
-- **Still no Supabase.** Everything persists to one gitignored JSON file at
-  `.data/panel.json` via `src/lib/panel/store.ts`. That is a deliberate
-  scaffold, not a production store, and it falls back to memory on Vercel.
+- **On Supabase since 2026-09-22.** Project `nyjmsjdallwwomxmcdrh`, Mumbai.
+  All panel data goes through `src/lib/panel/db.ts` with the service role;
+  RLS is on with no policies, so the public keys and staff browsers reach
+  nothing. Sign-in is Supabase Auth plus an active `staff` row. The JSON store
+  (`store.ts`, `.data/`) is gone. There is **no owner account yet**: create it
+  with `scripts/create-owner.mjs`.
 - **Booking alerts by SMS are built** (Text.lk), and dormant until a token and
   a sender ID are set. See [`sms.md`](./sms.md). Every website booking texts the
   owner and every staff member who has a number saved in `/panel/team`.
@@ -2605,6 +2608,252 @@ it never deploys.
 > and the whole script grepped for `, true)` before the final run.
 
 `tsc` clean, build passes, zero em or en dashes.
+
+### 2026-09-21 (last) - Launch once, on the developer's accounts
+
+No code changed. Two decisions, recorded in [`launch-plan.md`](./launch-plan.md):
+
+- **Launch once, not staged.** Nothing is deployed until Supabase and
+  Cloudinary are built and the fleet can be listed. The staged option (public
+  site live now, panel off) was offered and declined.
+- **Supabase and Cloudinary go on the developer's own accounts**, like the SMS
+  sender ID. The plan now says what that carries: the client is the PDPA
+  controller of its customers' data, so put the arrangement in writing, and
+  keep any payment lever on the service rather than on the client's access to
+  its own customer records.
+
+**Region corrected** from Singapore to **Mumbai for both**: Vercel `bom1` and
+Supabase `ap-south-1`. With a database, the function-to-database distance is
+paid on every query, so the two must sit together; Mumbai is also closest to
+Colombo.
+
+**Size of the Supabase job, measured:** the panel store is read and written
+synchronously in **62 places across 15 files** (`readData()` / `writeData()`).
+Postgres is asynchronous, so every one of those call sites changes. This is
+the bulk of phase 4 and needs no credentials to start: the data layer can be
+made async against the local file store first, then swapped. The Supabase CLI
+is available here (`npx supabase`, 2.107.0); the Vercel CLI is not installed.
+
+### 2026-09-21 (Supabase) - Project connected, schema written, not yet pushed
+
+Supabase project `nyjmsjdallwwomxmcdrh`, on the developer's account.
+**Decision this session: staff sign in with Supabase Auth**, as the 2026-09-05
+plan locked, over keeping the panel's own sign-in on Postgres (which was
+offered as the lower-risk option).
+
+**Verified, not assumed**
+
+- `.env.local` had the **publishable key pasted into the URL slot**. The
+  project ref was read out of the anon key's JWT and the URL corrected to
+  `https://nyjmsjdallwwomxmcdrh.supabase.co`; the publishable key moved to its
+  own `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` line.
+- Anon and service role keys: same project, correct roles, auth health 200,
+  REST 200, **no tables yet**. The publishable key authenticates against this
+  project (the 401 seen first was only the REST schema root, which publishable
+  keys may not read).
+- **Region: `ap-south-1`, Mumbai**, established by resolving the database host
+  and matching its IPv6 address against AWS's published ranges
+  (`2406:da1a::/35`). The dashboard region was not visible from here.
+- **The database password in `.env.local` is wrong.** The session pooler
+  (`aws-0-ap-south-1.pooler.supabase.com`) found the tenant and refused the
+  password. The direct host is IPv6 only and does not resolve for the CLI on
+  this machine, so the pooler is the route. **Reset it in the dashboard**
+  before any migration can be pushed.
+- **The Supabase CLI is signed in to a different account.** `projects list`
+  shows only "yhp-Helixra" (ref `lwawcrjubgcmzfbwdrsn`, Tokyo), not this
+  project. **Never run `supabase link` or `db push` without an explicit
+  `--db-url` for this project** until `npx supabase login` is redone with the
+  right account, or a migration lands in someone else's database.
+
+**Added**
+
+- `@supabase/supabase-js` 2.116 and `@supabase/ssr` 0.12.7. Neither pins a Next
+  or React version.
+- `supabase/` from `supabase init` (local only), and
+  **`supabase/migrations/20260921000000_panel_init.sql`**, written but **not
+  pushed** and not yet validated against a real database.
+- `.env.example` documents the Supabase and Cloudinary variable names.
+
+**The schema's design, and why**
+
+- **Auth proves who; it grants no data.** Every table has RLS **on with no
+  policies**, and the migration revokes all grants from `anon` and
+  `authenticated`. All reads and writes go through the server with the service
+  role, after `guard.ts` has checked the session, the `staff` row and, for an
+  employee, the owner-approved write window. A policy granting `authenticated`
+  access would let any staff browser bypass the write windows; the header of
+  the migration says so.
+- `staff.id` is the `auth.users` id. A partial unique index allows **exactly
+  one owner**.
+- **One `vehicles` table, no overrides.** The catalogue ships empty, so the
+  override layer in `lib/fleet.ts` has nothing to layer over. Edits update the
+  row. `images` holds Cloudinary public ids.
+- `audit.staff_id` null means the system acted, replacing the `"system"`
+  string the retention rule writes today.
+- Enquiry messages get their own table; booking documents stay a `jsonb`
+  metadata array with the bytes in the **private `id-documents` bucket** (8MB
+  cap and MIME allowlist matching `uploads.ts`, no storage policies).
+- Indexes for finding a past customer by phone, ID number and licence number,
+  which the 90-day photo rule makes the only way to identify them.
+
+**Still to design, noted so it is not lost**
+
+- **Orphaned uploads.** A customer who uploads ID photos and abandons the form
+  leaves files no booking points at. That was true of `.data/uploads/` too,
+  and nothing ever deleted them. The retention job must also remove unreferenced
+  objects older than a day.
+- **Where the retention job runs.** It deletes storage objects, which should go
+  through the Storage API rather than raw SQL on `storage.objects`, so a
+  scheduled server call (Vercel Cron to a secret-protected route) fits better
+  than `pg_cron`. Decide when building it.
+- **Creating staff accounts.** With Supabase Auth, the owner creates an
+  employee through `auth.admin.createUser` on the server. The one-time password
+  should be shown once and **never stored**, unlike today's `oneTimePassword`
+  field.
+
+**Next:** make the data layer async (62 call sites in 15 files) against these
+tables, wire Supabase Auth into `/999p7k`, `proxy.ts` and `guard.ts`, then push
+the migration once the password is reset.
+
+### 2026-09-22 - Schema pushed and the lockdown proven on the live database
+
+The developer reset the database password and re-linked the CLI. `projects
+list` now shows only **extra-cabs, `ap-south-1`, linked**, so the wrong-account
+warning in the previous entry no longer applies. The session pooler accepts
+the new password.
+
+`20260921000000_panel_init.sql` was dry-run (exactly that one migration), then
+pushed with an explicit `--db-url`. The CLI warned it could not cache a
+migrations catalog because Docker is not installed. That concerns only the
+CLI's local development tooling and has no effect on the remote database.
+
+**Verified against the live project, not assumed. 55 checks, all passing.**
+
+- **All 10 tables exist** and the service role reads each one.
+- **The anon key and the publishable key are refused** on every table, for
+  reads and for inserts.
+- **A signed-in staff member is refused too.** Two throwaway logins were
+  created through the admin API; one was signed in exactly as a browser would,
+  and with that session could not read `staff`, `bookings`, `vehicles`,
+  `access_requests`, `audit`, `work_shifts` or `sms_messages`, could not
+  insert a vehicle, **could not open its own write window**, **could not
+  promote itself to owner**, and could not list the photo bucket. This is the
+  check that proves the owner-approved windows cannot be bypassed from a
+  browser.
+- **One owner only:** a second `role = 'owner'` row is refused by the partial
+  unique index; an employee row beside it is accepted.
+- **`id-documents` bucket:** exists, **private**, 8MB limit, five allowed MIME
+  types and no SVG; anon cannot list it, upload to it, or reach it through a
+  public URL.
+- Throwaway logins and staff rows removed afterwards; the database is empty
+  again (0 staff rows, 0 test logins).
+
+> **The internet dropped mid-test, and the cleanup ran during the outage.**
+> The two throwaway logins and their staff rows were stranded in the live
+> database until the connection returned and they were removed by hand. The
+> re-run used a script whose cleanup retries for up to 50 seconds and fails
+> loudly if it cannot finish. **Any test that creates rows in the live
+> project needs a retrying cleanup and a check that it completed.**
+
+**Next:** the data layer. The panel still reads and writes `.data/panel.json`;
+nothing in the app talks to Supabase yet.
+
+### 2026-09-22 (later) - The panel runs on Supabase
+
+The whole panel moved off the JSON file store: 62 synchronous store calls in
+15 files, every screen, action and route. `store.ts` is deleted. Details of
+where things now live are in [`panel.md`](./panel.md).
+
+**Built**
+
+- `src/lib/supabase/`: `env.ts` (named errors for missing variables),
+  `admin.ts` (service role, `server-only`), `server.ts` (the Supabase Auth
+  cookie client, used for identity only).
+- **`src/lib/panel/db.ts`: every table read and write.** Shallow snake/camel
+  conversion (jsonb keeps its own keys), every error thrown with the operation
+  named, count queries for badges and lifetime totals.
+- Second migration, `20260922000000_panel_functions.sql`:
+  **`next_booking_reference()`** on a sequence, and **`panel_sweep()`**, which
+  closes stale presence at each segment's own last heartbeat (a column-to-column
+  copy the REST API cannot express). Both are service-role only; Postgres
+  grants new functions to PUBLIC by default, so that grant is revoked.
+- Sign-in on Supabase Auth; `getCurrentUser` is memoised per request with
+  React `cache()` and requires an **active** staff row. `proxy.ts` refreshes
+  the session and gates `/panel`.
+- `uploads.ts` on the private bucket; `retention.ts` async, plus
+  **`purgeOrphanUploads()`**; **`/api/cron/retention`** behind `CRON_SECRET`;
+  `vercel.json` pins functions to `bom1` and schedules the run daily at 02:00
+  Colombo.
+- `scripts/create-owner.mjs` creates the one owner (refuses if one exists).
+
+**Bugs fixed on the way, each of which the move would otherwise have kept or
+created**
+
+- **Booking references repeated.** They were "count + 1", so deleting a
+  booking made the next one reuse a live reference. Now a sequence.
+- **One-time passwords were stored in plaintext** until dismissed. Now shown
+  once from a five minute httpOnly cookie and held only as a Supabase Auth hash.
+  Generated with `crypto.randomInt`, not `Math.random`.
+- **`canWrite()` became async**, and `if (canWrite(...))` on a promise is always
+  true: every employee would have been shown edit and delete controls.
+  TypeScript's TS2801 flagged each site; all awaited. The server gate was never
+  affected, but the screen would have lied.
+- **Timestamps were sorted as text.** Postgres returns `+00:00`, fresh values
+  end in `Z`, so text order breaks. Sorted by parsed time now.
+- **The dashboard showed employees everyone's audit entries**, while
+  `/panel/activity` showed them only their own. Same rule in both now.
+- **`PANEL_OTP_PEPPER` fell back to a value in the public repo.** It now throws
+  in production; proven when the first end-to-end run hit exactly that error.
+- **The public actions trusted their callers.** `createBookingAction` now forces
+  `source: "website"`, rounds and caps the amount, accepts only well-formed
+  document metadata (one per real slot), real calendar dates, and a listed
+  vehicle (anything else saves with no vehicle instead of a foreign-key crash).
+- `safeName()` in uploads split only on `/`: the escape trap again. Fixed.
+
+**Proven against the live project, 141 checks in all, every one passing**
+
+- 31: every function in `db.ts`, round trip through each table.
+- 5: the two functions are service-role only; the sequence never repeats.
+- **43 end to end over HTTP** on a production build, forms submitted as a
+  browser without JavaScript would: sign-in and wrong password, shift and
+  heartbeat, owner kept off the timesheet, an employee **replaying the owner's
+  add-vehicle action without a window refused server-side**, code request,
+  wrong then right code, vehicle created inside the window and tied to it in
+  the audit, public site showing it, booked vehicle 404ing, the one-time
+  password shown once and absent from the table, a disabled employee locked out
+  on the next click, a forged Supabase cookie bounced, sign out closing the
+  shift.
+- **24 on the customer side:** real uploads to the private bucket, an
+  executable named `.jpg` and an SVG refused, a booking caller trying to claim
+  `source: "panel"` and attach junk documents, the photo route (404 without a
+  session and for a traversal; exact bytes, `private, no-store` and `nosniff`
+  with one), retention clearing a 100-day-old hire while keeping the record,
+  and the orphan sweep keeping a fresh upload and deleting it after a day.
+- Cron route: 401 with no key and a wrong key, 200 with the right one.
+- Every run cleaned up with a retrying cleanup and a check that it completed.
+
+> **Measured, worth knowing: a deleted photo stays readable for up to about a
+> minute** (53.6s measured) if it was read shortly before deletion. That is
+> Supabase Storage's cache; its documented invalidation is up to 60 seconds.
+> The delete itself is immediate (removed, gone from listings), and the cached
+> copy is reachable only with the service role, so only through the staff
+> photo route by someone who already has the id. On a 90-day rule this is
+> harmless, but it is real and the tests wait for it.
+
+**Test references consumed:** the sequence has handed out EC-0001 to EC-0004
+during testing. **Restart it before launch** so the first real booking is
+EC-0001.
+
+**Not done in this session:** Cloudinary photo upload, the owner account
+(needs the owner's email; the developer runs the script), changing an
+employee's password from the panel, and the `PANEL_OTP_PEPPER` and
+`CRON_SECRET` values on Vercel (both generated into `.env.local`).
+
+> **Pushed while the payment-arrangement notes were in the docs.** Commit
+> `vgfg` (2026-09-21) put the 2026-09-20 entries on public GitHub, including
+> the line that the sender ID would be revoked "if the client does not pay".
+> No secrets were in it: every secret in `.env.local` was checked against the
+> full history and found zero times.
 
 ---
 

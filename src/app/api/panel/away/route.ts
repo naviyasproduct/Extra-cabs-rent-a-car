@@ -11,6 +11,6 @@ export async function POST() {
   const user = await getCurrentUser();
   if (!user) return new Response("no session", { status: 401 });
 
-  markAway(user.id, "browser_closed");
+  await markAway(user, "browser_closed");
   return new Response(null, { status: 204 });
 }

@@ -4,9 +4,9 @@ import { readDocument } from "@/lib/panel/uploads";
 /**
  * Serves one customer identity document to a signed-in staff member.
  *
- * This is the ONLY way the bytes come back out. They are written under .data/,
- * never under public/, so there is no static path to them and no way to reach
- * one without passing this check first.
+ * This is the ONLY way the bytes come back out. They live in the private
+ * id-documents Supabase bucket, which only the service role can read, so there
+ * is no URL to them and no way to reach one without passing this check first.
  *
  * A missing session gets 404, not 401: whether a given id exists is itself
  * information, and there is nothing useful a signed-out caller could do with
@@ -20,7 +20,7 @@ export async function GET(
   if (!user) return new Response("Not found", { status: 404 });
 
   const { id } = await params;
-  const found = readDocument(id);
+  const found = await readDocument(id);
   if (!found) return new Response("Not found", { status: 404 });
 
   return new Response(new Uint8Array(found.bytes), {

@@ -1,18 +1,38 @@
 "use server";
 
+import crypto from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { requireOwner, requireStaff, assertCanWrite, WindowRequiredError } from "@/lib/panel/guard";
-import { SESSION_COOKIE } from "@/lib/panel/auth";
-import { hashPassword, newId, readData, writeData } from "@/lib/panel/store";
+import { emailHasAccount, signOut } from "@/lib/panel/auth";
+import {
+  deleteBookingRow,
+  getAccessRequest,
+  getBooking,
+  getStaff,
+  insertAudit,
+  insertBooking,
+  insertEnquiry,
+  insertEnquiryMessage,
+  insertStaff,
+  insertVehicle,
+  newId,
+  nextBookingReference,
+  updateBooking,
+  updateEnquiry,
+  updateStaff,
+  updateVehicle,
+  vehicleSlugExists,
+} from "@/lib/panel/db";
 import { closeShift, openShift, markAway } from "@/lib/panel/time";
 import { closeWindow, redeemCode, requestWindow, scopeLabel } from "@/lib/panel/window";
-import { vehicleBySlug } from "@/lib/fleet";
-import { deleteDocument, saveDocument } from "@/lib/panel/uploads";
+import { publicCarBySlug, vehicleBySlug } from "@/lib/fleet";
+import { deleteDocuments, saveDocument, VALID_SLOTS } from "@/lib/panel/uploads";
 import { notifyNewBooking, sendTestSms } from "@/lib/sms/notify";
 import { toMsisdn } from "@/lib/sms/textlk";
+import { admin } from "@/lib/supabase/admin";
 import {
   checkbox,
   clamp,
@@ -24,6 +44,7 @@ import {
 } from "@/lib/panel/vehicle-form";
 import { RATE_TIERS } from "@/lib/pricing";
 import type {
+  AuditEntry,
   BookingStatus,
   PanelBooking,
   PaymentMethod,
@@ -36,10 +57,16 @@ import type {
 } from "@/types/booking";
 
 /**
- * Every mutation in the panel.
+ * Every mutation in the panel, plus the three public forms.
  *
- * All of them re-read the session and re-check permission from the store. None
- * of them trust a field the browser sent about who the caller is.
+ * Staff actions re-read the session and re-check permission from the database
+ * through the guard. None of them trust a field the browser sent about who
+ * the caller is.
+ *
+ * The public actions (createBookingAction, createEnquiryAction,
+ * uploadBookingDocumentAction) are callable by anyone, not only by the forms
+ * that use them, so they accept only what a customer can legitimately send and
+ * clamp everything else.
  *
  * revalidatePath("/fleet") and friends are what make a change in the panel show
  * up on the public site: mark a vehicle booked here and the customer-facing
@@ -54,26 +81,33 @@ function refreshPublicFleet() {
   revalidatePath("/sitemap.xml");
 }
 
-function audit(
+async function audit(
   staffId: string,
   action: string,
-  entity: "vehicle" | "booking" | "enquiry" | "staff" | "access" | "shift",
+  entity: AuditEntry["entity"],
   entityId: string,
   summary: string,
   accessRequestId: string | null = null,
 ) {
-  writeData((data) => {
-    data.audit.push({
-      id: newId("aud"),
-      at: new Date().toISOString(),
-      staffId,
-      action,
-      entity,
-      entityId,
-      summary,
-      accessRequestId,
-    });
-  });
+  await insertAudit({ staffId, action, entity, entityId, summary, accessRequestId });
+}
+
+/** Runs the write gate and turns a missing window into a readable redirect. */
+async function gate(
+  user: Awaited<ReturnType<typeof requireStaff>>,
+  scope: WindowScope,
+  targetSlug: string | null,
+  back: string,
+  message: string,
+): Promise<string | null> {
+  try {
+    return await assertCanWrite(user, scope, targetSlug);
+  } catch (error) {
+    if (error instanceof WindowRequiredError) {
+      redirect(`${back}?error=${encodeURIComponent(message)}`);
+    }
+    throw error;
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -82,40 +116,44 @@ function audit(
 
 export async function signOutAction() {
   const user = await requireStaff();
-  closeShift(user.id, "manual_signout");
-  const jar = await cookies();
-  jar.delete(SESSION_COOKIE);
+  await closeShift(user, "manual_signout");
+  await signOut();
   redirect("/999p7k");
 }
 
 export async function clockInAction() {
   const user = await requireStaff();
-  openShift(user.id);
+  await openShift(user);
   revalidatePath("/panel", "layout");
 }
 
 export async function clockOutAction() {
   const user = await requireStaff();
-  closeShift(user.id, "manual_signout");
+  await closeShift(user, "manual_signout");
   revalidatePath("/panel", "layout");
 }
 
 export async function awayAction() {
   const user = await requireStaff();
-  markAway(user.id, "browser_closed");
+  await markAway(user, "browser_closed");
 }
 
 /* -------------------------------------------------------------------------- */
 /* The write window                                                            */
 /* -------------------------------------------------------------------------- */
 
+const SCOPE_IDS: WindowScope[] = [
+  "fleet.create", "fleet.update", "fleet.delete", "fleet.photos", "pricing.update", "booking.delete",
+];
+
 export async function requestWindowAction(formData: FormData) {
   const user = await requireStaff();
   const scope = String(formData.get("scope") ?? "") as WindowScope;
+  if (!SCOPE_IDS.includes(scope)) return;
   const reason = String(formData.get("reason") ?? "");
   const target = String(formData.get("target") ?? "").trim();
 
-  requestWindow(user, scope, reason, target.length > 0 ? target : null);
+  await requestWindow(user, scope, reason, target.length > 0 ? target : null);
   revalidatePath("/panel", "layout");
 }
 
@@ -124,7 +162,7 @@ export async function redeemCodeAction(formData: FormData) {
   const requestId = String(formData.get("requestId") ?? "");
   const code = String(formData.get("code") ?? "");
 
-  const result = redeemCode(user, requestId, code);
+  const result = await redeemCode(user, requestId, code);
   revalidatePath("/panel", "layout");
 
   if (!result.ok) {
@@ -136,17 +174,15 @@ export async function closeWindowAction(formData: FormData) {
   const user = await requireStaff();
   const requestId = String(formData.get("requestId") ?? "");
 
-  const request = readData().accessRequests.find((r) => r.id === requestId);
+  const request = await getAccessRequest(requestId);
   if (!request) return;
 
   // The owner may revoke anyone's window. An employee may only close their own.
   if (user.role !== "owner" && request.staffId !== user.id) return;
 
-  closeWindow(
+  await closeWindow(
     requestId,
-    user.role === "owner" && request.staffId !== user.id
-      ? "revoked by owner"
-      : "finished",
+    user.role === "owner" && request.staffId !== user.id ? "revoked by owner" : "finished",
     user.id,
   );
   revalidatePath("/panel", "layout");
@@ -168,12 +204,8 @@ export async function setVehicleAvailabilityAction(formData: FormData) {
   const vehicle = await vehicleBySlug(slug);
   if (!vehicle) return;
 
-  writeData((data) => {
-    const current = data.vehicleOverrides[slug] ?? {};
-    data.vehicleOverrides[slug] = { ...current, available };
-  });
-
-  audit(
+  await updateVehicle(slug, { available });
+  await audit(
     user.id,
     available ? "vehicle.freed" : "vehicle.booked",
     "vehicle",
@@ -207,16 +239,12 @@ export async function updateVehicleAction(formData: FormData) {
     formData.get(key) === null ? current : parse();
 
   const next = {
-    name: String(formData.get("name") ?? vehicle.car.name).trim(),
-    tagline: keep("tagline", vehicle.car.tagline, () =>
-      plainText(formData.get("tagline"), 140),
-    ),
+    name: plainText(formData.get("name") ?? vehicle.car.name, 80) || vehicle.car.name,
+    tagline: keep("tagline", vehicle.car.tagline, () => plainText(formData.get("tagline"), 140)),
     description: keep("description", vehicle.car.description, () =>
       plainText(formData.get("description"), 1200),
     ),
-    features: keep("features", vehicle.car.features, () =>
-      featureLines(formData.get("features")),
-    ),
+    features: keep("features", vehicle.car.features, () => featureLines(formData.get("features"))),
     seats: clamp(num("seats", vehicle.car.specs.seats), 1, 60),
     doors: clamp(num("doors", vehicle.car.specs.doors), 1, 8),
     fuel: keep("fuel", vehicle.car.specs.fuel, () => fuelChoice(formData.get("fuel"))),
@@ -224,13 +252,11 @@ export async function updateVehicleAction(formData: FormData) {
     // an absent key here means "cleared". The whole fieldset is only rendered
     // to someone who may edit it, so there is no locked-form case to protect.
     hybrid: checkbox(formData.get("hybrid")),
-    daily: num("daily", vehicle.car.pricing.daily),
-    deposit: num("deposit", vehicle.car.pricing.deposit),
+    daily: clamp(num("daily", vehicle.car.pricing.daily), 0, 10_000_000),
+    deposit: clamp(num("deposit", vehicle.car.pricing.deposit), 0, 10_000_000),
     // Blank or zero means no rate set, which the vehicle page shows as "ask
     // us". Absent (a locked fieldset) keeps the current rate.
-    extraKm: keep("extraKm", vehicle.car.pricing.extraKm, () =>
-      optionalRate(formData.get("extraKm")),
-    ),
+    extraKm: keep("extraKm", vehicle.car.pricing.extraKm, () => optionalRate(formData.get("extraKm"))),
     featured: formData.get("featured") === "on",
   };
   const tiers = tierRates(formData, next.daily, vehicle.car.pricing.tiers);
@@ -247,29 +273,14 @@ export async function updateVehicleAction(formData: FormData) {
 
   // Pricing has its own scope, so an employee given a photo window cannot
   // quietly change the rates.
-  let requestId: string | null = null;
-  try {
-    requestId = assertCanWrite(
-      user,
-      pricingChanged ? "pricing.update" : "fleet.update",
-      slug,
-    );
-  } catch (error) {
-    if (error instanceof WindowRequiredError) {
-      redirect(
-        `/panel/fleet/${slug}?error=${encodeURIComponent(
-          `You need an open window for ${scopeLabel(error.scope)} to save that.`,
-        )}`,
-      );
-    }
-    throw error;
-  }
+  const scope: WindowScope = pricingChanged ? "pricing.update" : "fleet.update";
+  const requestId = await gate(
+    user, scope, slug, `/panel/fleet/${slug}`,
+    `You need an open window for ${scopeLabel(scope)} to save that.`,
+  );
 
   const before = vehicle.car;
-  writeData((data) => {
-    const current = data.vehicleOverrides[slug] ?? {};
-    data.vehicleOverrides[slug] = { ...current, ...next, tiers };
-  });
+  await updateVehicle(slug, { ...next, tiers });
 
   const changes: string[] = [];
   if (next.name !== before.name) changes.push(`name to ${next.name}`);
@@ -285,26 +296,20 @@ export async function updateVehicleAction(formData: FormData) {
   if (next.daily !== before.pricing.daily)
     changes.push(`daily ${before.pricing.daily} to ${next.daily}`);
   for (const tier of changedTiers)
-    changes.push(
-      `${tier.label} rate ${before.pricing.tiers[tier.id]} to ${tiers[tier.id]} a day`,
-    );
+    changes.push(`${tier.label} rate ${before.pricing.tiers[tier.id]} to ${tiers[tier.id]} a day`);
   if (next.deposit !== before.pricing.deposit)
     changes.push(`deposit ${before.pricing.deposit} to ${next.deposit}`);
   if (next.extraKm !== before.pricing.extraKm)
-    changes.push(
-      `extra km rate ${before.pricing.extraKm ?? "unset"} to ${next.extraKm ?? "unset"}`,
-    );
+    changes.push(`extra km rate ${before.pricing.extraKm ?? "unset"} to ${next.extraKm ?? "unset"}`);
   if (next.featured !== before.featured)
     changes.push(next.featured ? "featured on the home page" : "unfeatured");
 
-  audit(
+  await audit(
     user.id,
     "vehicle.updated",
     "vehicle",
     slug,
-    changes.length > 0
-      ? `Edited ${before.name}: ${changes.join(", ")}`
-      : `Saved ${before.name} with no changes`,
+    changes.length > 0 ? `Edited ${before.name}: ${changes.join(", ")}` : `Saved ${before.name} with no changes`,
     requestId,
   );
 
@@ -315,81 +320,60 @@ export async function updateVehicleAction(formData: FormData) {
 
 export async function createVehicleAction(formData: FormData) {
   const user = await requireStaff();
+  const requestId = await gate(
+    user, "fleet.create", null, "/panel/fleet", "You need an open window to add a vehicle.",
+  );
 
-  let requestId: string | null = null;
-  try {
-    requestId = assertCanWrite(user, "fleet.create");
-  } catch (error) {
-    if (error instanceof WindowRequiredError) {
-      redirect(
-        `/panel/fleet?error=${encodeURIComponent("You need an open window to add a vehicle.")}`,
-      );
-    }
-    throw error;
-  }
-
-  const name = String(formData.get("name") ?? "").trim();
+  const name = plainText(formData.get("name"), 80);
   if (name.length === 0) {
     redirect(`/panel/fleet?error=${encodeURIComponent("A vehicle needs a name.")}`);
   }
 
-  const slugBase = name
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
-
-  const existing = readData().createdVehicles.map((v) => v.slug);
+  const slugBase =
+    name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "vehicle";
   let slug = slugBase;
-  let n = 2;
-  while (existing.includes(slug)) slug = `${slugBase}-${n++}`;
+  for (let n = 2; await vehicleSlugExists(slug); n++) slug = `${slugBase}-${n}`;
 
   const num = (key: string, fallback: number) => {
     const parsed = Number(formData.get(key));
     return Number.isNaN(parsed) || parsed === 0 ? fallback : parsed;
   };
 
-  const daily = num("daily", 8000);
+  const daily = clamp(num("daily", 8000), 0, 10_000_000);
 
-  writeData((data) => {
-    data.createdVehicles.push({
-      slug,
-      name,
-      brand: plainText(formData.get("brand"), 40) || name.split(" ")[0],
-      year: num("year", new Date().getFullYear()),
-      category: String(formData.get("category") ?? "hatchback"),
-      tagline: plainText(formData.get("tagline"), 140),
-      description: plainText(formData.get("description"), 1200),
-      features: featureLines(formData.get("features")),
-      seats: clamp(num("seats", 5), 1, 60),
-      doors: clamp(num("doors", 5), 1, 8),
-      luggage: clamp(num("luggage", 2), 0, 20),
-      transmission:
-        String(formData.get("transmission") ?? "automatic") === "manual"
-          ? "manual"
-          : "automatic",
-      fuel: fuelChoice(formData.get("fuel")),
-      hybrid: checkbox(formData.get("hybrid")),
-      engineCc: clamp(num("engineCc", 1500), 0, 10000),
-      daily,
-      // Left blank, a long-hire rate is suggested from the daily one, so a
-      // hurried add still produces a complete rate table.
-      tiers: tierRates(formData, daily),
-      deposit: num("deposit", 30000),
-      extraKm: optionalRate(formData.get("extraKm")),
-      withDriverDaily: optionalRate(formData.get("withDriverDaily")),
-      // No photos until photo upload exists. These used to be three stock
-      // photographs, so every vehicle added in the panel showed pictures of
-      // cars that were not it. A placeholder tile is honest; see SafeImage.
-      images: [],
-      available: true,
-      featured: false,
-      createdAt: new Date().toISOString(),
-      createdBy: user.id,
-      deletedAt: null,
-    });
+  await insertVehicle({
+    slug,
+    name,
+    brand: plainText(formData.get("brand"), 40) || name.split(" ")[0],
+    year: clamp(num("year", new Date().getFullYear()), 1950, 2100),
+    category: String(formData.get("category") ?? "hatchback"),
+    tagline: plainText(formData.get("tagline"), 140),
+    description: plainText(formData.get("description"), 1200),
+    features: featureLines(formData.get("features")),
+    seats: clamp(num("seats", 5), 1, 60),
+    doors: clamp(num("doors", 5), 1, 8),
+    luggage: clamp(num("luggage", 2), 0, 20),
+    transmission: String(formData.get("transmission") ?? "automatic") === "manual" ? "manual" : "automatic",
+    fuel: fuelChoice(formData.get("fuel")),
+    hybrid: checkbox(formData.get("hybrid")),
+    engineCc: clamp(num("engineCc", 1500), 0, 10000),
+    daily,
+    // Left blank, a long-hire rate is suggested from the daily one, so a
+    // hurried add still produces a complete rate table.
+    tiers: tierRates(formData, daily),
+    deposit: clamp(num("deposit", 30000), 0, 10_000_000),
+    extraKm: optionalRate(formData.get("extraKm")),
+    withDriverDaily: optionalRate(formData.get("withDriverDaily")),
+    // Photos arrive with Cloudinary upload. Until then a vehicle shows an
+    // honest placeholder tile; see SafeImage.
+    images: [],
+    available: true,
+    featured: false,
+    createdBy: user.id,
+    deletedAt: null,
   });
 
-  audit(user.id, "vehicle.created", "vehicle", slug, `Added ${name}`, requestId);
+  await audit(user.id, "vehicle.created", "vehicle", slug, `Added ${name}`, requestId);
   refreshPublicFleet();
   revalidatePath("/panel/fleet");
   redirect(`/panel/fleet/${slug}?saved=1`);
@@ -403,27 +387,12 @@ export async function deleteVehicleAction(formData: FormData) {
   const vehicle = await vehicleBySlug(slug);
   if (!vehicle) return;
 
-  let requestId: string | null = null;
-  try {
-    requestId = assertCanWrite(user, "fleet.delete", slug);
-  } catch (error) {
-    if (error instanceof WindowRequiredError) {
-      redirect(
-        `/panel/fleet?error=${encodeURIComponent("You need an open window to remove a vehicle.")}`,
-      );
-    }
-    throw error;
-  }
+  const requestId = await gate(
+    user, "fleet.delete", slug, "/panel/fleet", "You need an open window to remove a vehicle.",
+  );
 
-  writeData((data) => {
-    const current = data.vehicleOverrides[slug] ?? {};
-    data.vehicleOverrides[slug] = {
-      ...current,
-      deletedAt: restore ? null : new Date().toISOString(),
-    };
-  });
-
-  audit(
+  await updateVehicle(slug, { deletedAt: restore ? null : new Date().toISOString() });
+  await audit(
     user.id,
     restore ? "vehicle.restored" : "vehicle.deleted",
     "vehicle",
@@ -440,40 +409,35 @@ export async function deleteVehicleAction(formData: FormData) {
 /* Bookings                                                                    */
 /* -------------------------------------------------------------------------- */
 
+const STATUSES: BookingStatus[] = ["pending", "confirmed", "on_hire", "returned", "cancelled"];
+const PAYMENT_METHODS: PaymentMethod[] = ["unpaid", "cash", "bank_transfer", "card_on_pickup"];
+
 export async function setBookingStatusAction(formData: FormData) {
   const user = await requireStaff();
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "") as BookingStatus;
+  if (!STATUSES.includes(status)) return;
 
-  const booking = readData().bookings.find((b) => b.id === id);
+  const booking = await getBooking(id);
   if (!booking) return;
 
-  writeData((data) => {
-    const target = data.bookings.find((b) => b.id === id);
-    if (!target) return;
-    target.status = status;
-    target.handledBy = user.id;
-    // Starts the retention clock for the ID photos (lib/panel/retention-rules).
-    // Reopening a closed booking stops it again.
-    const closing = status === "returned" || status === "cancelled";
-    target.closedAt = closing ? (target.closedAt ?? new Date().toISOString()) : null;
-
-    // Confirming or starting a hire takes the vehicle off the website.
-    // Cancelling or returning puts it back.
-    if (target.carSlug) {
-      const held = status === "confirmed" || status === "on_hire";
-      const current = data.vehicleOverrides[target.carSlug] ?? {};
-      data.vehicleOverrides[target.carSlug] = { ...current, available: !held };
-    }
+  // Starts the retention clock for the ID photos (lib/panel/retention-rules).
+  // Reopening a closed booking stops it again.
+  const closing = status === "returned" || status === "cancelled";
+  await updateBooking(id, {
+    status,
+    handledBy: user.id,
+    closedAt: closing ? (booking.closedAt ?? new Date().toISOString()) : null,
   });
 
-  audit(
-    user.id,
-    "booking.status",
-    "booking",
-    id,
-    `${booking.reference} set to ${status.replace("_", " ")}`,
-  );
+  // Confirming or starting a hire takes the vehicle off the website.
+  // Cancelling or returning puts it back.
+  if (booking.carSlug) {
+    const held = status === "confirmed" || status === "on_hire";
+    await updateVehicle(booking.carSlug, { available: !held });
+  }
+
+  await audit(user.id, "booking.status", "booking", id, `${booking.reference} set to ${status.replace("_", " ")}`);
 
   refreshPublicFleet();
   revalidatePath("/panel/bookings");
@@ -484,17 +448,13 @@ export async function setBookingPaymentAction(formData: FormData) {
   const user = await requireStaff();
   const id = String(formData.get("id") ?? "");
   const method = String(formData.get("method") ?? "unpaid") as PaymentMethod;
-  const amount = Number(formData.get("amount") ?? 0) || 0;
+  if (!PAYMENT_METHODS.includes(method)) return;
+  const amount = clamp(Math.round(Number(formData.get("amount") ?? 0) || 0), 0, 100_000_000);
 
-  writeData((data) => {
-    const booking = data.bookings.find((b) => b.id === id);
-    if (!booking) return;
-    booking.paymentMethod = method;
-    booking.amount = amount;
-    booking.handledBy = user.id;
-  });
+  if (!(await getBooking(id))) return;
+  await updateBooking(id, { paymentMethod: method, amount, handledBy: user.id });
 
-  audit(user.id, "booking.payment", "booking", id, `Recorded ${method.replace("_", " ")} ${amount}`);
+  await audit(user.id, "booking.payment", "booking", id, `Recorded ${method.replace("_", " ")} ${amount}`);
   revalidatePath("/panel/bookings");
   revalidatePath("/panel");
 }
@@ -515,16 +475,10 @@ export async function setBookingIdentityAction(formData: FormData) {
   // A checkbox posts nothing when unticked, so absent means off.
   const documentsHold = checkbox(formData.get("documentsHold"));
 
-  const before = readData().bookings.find((b) => b.id === id);
+  const before = await getBooking(id);
   if (!before) return;
 
-  writeData((data) => {
-    const target = data.bookings.find((b) => b.id === id);
-    if (!target) return;
-    target.idNumber = idNumber;
-    target.licenceNumber = licenceNumber;
-    target.documentsHold = documentsHold;
-  });
+  await updateBooking(id, { idNumber, licenceNumber, documentsHold });
 
   const changes: string[] = [];
   if (idNumber !== before.idNumber) changes.push("ID number");
@@ -534,7 +488,7 @@ export async function setBookingIdentityAction(formData: FormData) {
   if (changes.length > 0) {
     // The numbers themselves stay out of the audit log: it is shown on a
     // screen, and it is not the place to copy identity numbers into.
-    audit(user.id, "booking.identity", "booking", id, `${before.reference}: ${changes.join(", ")}`);
+    await audit(user.id, "booking.identity", "booking", id, `${before.reference}: ${changes.join(", ")}`);
   }
   revalidatePath("/panel/bookings");
 }
@@ -543,38 +497,73 @@ export async function deleteBookingAction(formData: FormData) {
   const user = await requireStaff();
   const id = String(formData.get("id") ?? "");
 
-  let requestId: string | null = null;
-  try {
-    requestId = assertCanWrite(user, "booking.delete");
-  } catch (error) {
-    if (error instanceof WindowRequiredError) {
-      redirect(
-        `/panel/bookings?error=${encodeURIComponent("You need an open window to delete a booking.")}`,
-      );
-    }
-    throw error;
-  }
-
-  const booking = readData().bookings.find((b) => b.id === id);
-  // The photos go with the record. Before 2026-09-21 they were left on disk
-  // with nothing pointing at them, so nothing would ever have deleted them.
-  for (const document of booking?.documents ?? []) deleteDocument(document.id);
-  writeData((data) => {
-    data.bookings = data.bookings.filter((b) => b.id !== id);
-  });
-
-  audit(
-    user.id,
-    "booking.deleted",
-    "booking",
-    id,
-    `Deleted booking ${booking?.reference ?? id}`,
-    requestId,
+  const requestId = await gate(
+    user, "booking.delete", null, "/panel/bookings", "You need an open window to delete a booking.",
   );
+
+  const booking = await getBooking(id);
+  if (!booking) return;
+
+  // The photos go with the record, and first: deleteDocuments throws on a
+  // storage error, so the record is never removed while its photos remain.
+  await deleteDocuments(booking.documents.map((d) => d.id));
+  await deleteBookingRow(id);
+
+  await audit(user.id, "booking.deleted", "booking", id, `Deleted booking ${booking.reference}`, requestId);
   revalidatePath("/panel/bookings");
 }
 
-/** Used by the public booking forms, and by staff taking a booking by phone. */
+/* -------------------------------------------------------------------------- */
+/* Public: the booking form                                                    */
+/* -------------------------------------------------------------------------- */
+
+const DATE = /^\d{4}-\d{2}-\d{2}$/;
+const DOCUMENT_ID = /^[0-9a-f]{32}$/;
+
+/** A real calendar date in YYYY-MM-DD, or null. */
+function isoDate(value: unknown): string | null {
+  const text = String(value ?? "");
+  if (!DATE.test(text)) return null;
+  const [y, m, d] = text.split("-").map(Number);
+  const probe = new Date(Date.UTC(y, m - 1, d));
+  return probe.getUTCFullYear() === y && probe.getUTCMonth() === m - 1 && probe.getUTCDate() === d
+    ? text
+    : null;
+}
+
+/**
+ * Only well-formed metadata for real slots, at most one per slot. The bytes
+ * were already checked when they were uploaded; this stops a caller attaching
+ * junk, or twenty entries, to a booking.
+ */
+function cleanDocuments(input: unknown): UploadedDocument[] {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set<DocumentSlot>();
+  const out: UploadedDocument[] = [];
+  for (const raw of input.slice(0, VALID_SLOTS.length)) {
+    const d = raw as Partial<UploadedDocument>;
+    if (typeof d?.id !== "string" || !DOCUMENT_ID.test(d.id)) continue;
+    if (!d.slot || !VALID_SLOTS.includes(d.slot) || seen.has(d.slot)) continue;
+    seen.add(d.slot);
+    out.push({
+      id: d.id,
+      slot: d.slot,
+      fileName: plainText(d.fileName ?? "upload", 80) || "upload",
+      contentType: plainText(d.contentType ?? "", 40),
+      size: clamp(Math.round(Number(d.size) || 0), 0, 8 * 1024 * 1024),
+      uploadedAt:
+        typeof d.uploadedAt === "string" && !Number.isNaN(Date.parse(d.uploadedAt))
+          ? d.uploadedAt
+          : new Date().toISOString(),
+    });
+  }
+  return out;
+}
+
+/**
+ * PUBLIC. Called by the booking form, and callable by anyone who looks, so it
+ * trusts nothing it is sent beyond what a customer may choose.
+ */
 export async function createBookingAction(input: {
   carSlug: string | null;
   customerName: string;
@@ -591,29 +580,40 @@ export async function createBookingAction(input: {
   amount?: number;
   source?: "website" | "panel";
 }): Promise<string> {
-  const reference = `EC-${String(readData().bookings.length + 1).padStart(4, "0")}`;
+  const pickupDate = isoDate(input.pickupDate);
+  const returnDate = isoDate(input.returnDate);
+  if (!pickupDate || !returnDate || returnDate < pickupDate) {
+    throw new Error("Those dates are not valid. Check the pickup and return dates.");
+  }
+
+  // Only a vehicle a customer could actually see. Anything else is saved with
+  // no vehicle rather than failing the booking, and staff sort it out.
+  const car = input.carSlug ? await publicCarBySlug(String(input.carSlug)) : null;
 
   const booking: PanelBooking = {
     id: newId("bk"),
-    reference,
-    carSlug: input.carSlug,
-    customerName: input.customerName,
-    phone: input.phone,
-    whatsapp: input.whatsapp ?? "",
-    email: input.email ?? "",
-    pickupLocation: input.pickupLocation ?? "Heiyanthuduwa office",
-    pickupDate: input.pickupDate,
-    returnDate: input.returnDate,
-    withDriver: input.withDriver ?? false,
-    notes: input.notes ?? "",
+    reference: await nextBookingReference(),
+    carSlug: car?.slug ?? null,
+    customerName: plainText(input.customerName, 120) || "No name given",
+    phone: plainText(input.phone, 40),
+    whatsapp: plainText(input.whatsapp ?? "", 40),
+    email: plainText(input.email ?? "", 160),
+    pickupLocation: plainText(input.pickupLocation ?? "", 160) || "Heiyanthuduwa office",
+    pickupDate,
+    returnDate,
+    withDriver: input.withDriver === true,
+    notes: plainText(input.notes ?? "", 1000),
     status: "pending",
     paymentMethod: "unpaid",
-    amount: input.amount ?? 0,
+    // The customer's estimate, shown to staff as a starting point. Staff
+    // record the real amount when payment is taken.
+    amount: clamp(Math.round(Number(input.amount) || 0), 0, 100_000_000),
     createdAt: new Date().toISOString(),
     handledBy: null,
-    source: input.source ?? "website",
-    idType: input.idType ?? "nic",
-    documents: input.documents ?? [],
+    // A public caller is always the website. "panel" is not theirs to claim.
+    source: "website",
+    idType: input.idType === "passport" ? "passport" : "nic",
+    documents: cleanDocuments(input.documents),
     idNumber: "",
     licenceNumber: "",
     closedAt: null,
@@ -621,25 +621,20 @@ export async function createBookingAction(input: {
     documentsPurgedAt: null,
   };
 
-  writeData((data) => {
-    data.bookings.unshift(booking);
-  });
+  await insertBooking(booking);
 
   // Text the owner and the staff, after the response has gone back.
   //
   // after() rather than await: the booking is already saved, so the customer
   // should see "request sent" immediately instead of waiting on an SMS gateway.
-  // If Text.lk is slow or down, that is our problem to see in the message log,
-  // not theirs to sit and watch. The vehicle lookup is in here for the same
-  // reason. Nothing in notifyNewBooking() throws.
+  // Nothing in notifyNewBooking() throws.
   after(async () => {
-    const vehicle = booking.carSlug ? await vehicleBySlug(booking.carSlug) : null;
-    await notifyNewBooking(booking, vehicle?.car.name ?? null);
+    await notifyNewBooking(booking, car?.name ?? null);
   });
 
   revalidatePath("/panel/bookings");
   revalidatePath("/panel");
-  return reference;
+  return booking.reference;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -649,25 +644,15 @@ export async function createBookingAction(input: {
 export async function replyToEnquiryAction(formData: FormData) {
   const user = await requireStaff();
   const id = String(formData.get("id") ?? "");
-  const body = String(formData.get("body") ?? "").trim();
+  const body = plainText(formData.get("body"), 2000);
   if (body.length === 0) return;
 
-  writeData((data) => {
-    const enquiry = data.enquiries.find((e) => e.id === id);
-    if (!enquiry) return;
-    enquiry.messages.push({
-      id: newId("msg"),
-      at: new Date().toISOString(),
-      fromStaffId: user.id,
-      body,
-    });
-    enquiry.status = "answered";
-    enquiry.assignedTo = user.id;
-  });
+  await insertEnquiryMessage(id, { id: newId("msg"), at: new Date().toISOString(), fromStaffId: user.id, body });
+  await updateEnquiry(id, { status: "answered", assignedTo: user.id });
 
   // Counting replies is only possible because they happen in here. See the
   // plan, section 8.
-  audit(user.id, "enquiry.replied", "enquiry", id, "Replied to an enquiry");
+  await audit(user.id, "enquiry.replied", "enquiry", id, "Replied to an enquiry");
   revalidatePath("/panel/enquiries");
   revalidatePath("/panel");
 }
@@ -676,15 +661,12 @@ export async function closeEnquiryAction(formData: FormData) {
   const user = await requireStaff();
   const id = String(formData.get("id") ?? "");
 
-  writeData((data) => {
-    const enquiry = data.enquiries.find((e) => e.id === id);
-    if (enquiry) enquiry.status = "closed";
-  });
-
-  audit(user.id, "enquiry.closed", "enquiry", id, "Closed an enquiry");
+  await updateEnquiry(id, { status: "closed" });
+  await audit(user.id, "enquiry.closed", "enquiry", id, "Closed an enquiry");
   revalidatePath("/panel/enquiries");
 }
 
+/** PUBLIC. The contact form. */
 export async function createEnquiryAction(input: {
   name: string;
   email: string;
@@ -692,26 +674,24 @@ export async function createEnquiryAction(input: {
   subject: string;
   body: string;
 }) {
-  writeData((data) => {
-    data.enquiries.unshift({
-      id: newId("enq"),
-      name: input.name,
-      email: input.email,
-      phone: input.phone,
-      subject: input.subject,
-      createdAt: new Date().toISOString(),
+  const body = plainText(input.body, 4000);
+  if (body.length === 0) throw new Error("The message is empty.");
+
+  const at = new Date().toISOString();
+  const id = newId("enq");
+  await insertEnquiry(
+    {
+      id,
+      name: plainText(input.name, 120) || "No name given",
+      email: plainText(input.email, 160),
+      phone: plainText(input.phone, 40),
+      subject: plainText(input.subject, 160),
+      createdAt: at,
       status: "open",
       assignedTo: null,
-      messages: [
-        {
-          id: newId("msg"),
-          at: new Date().toISOString(),
-          fromStaffId: null,
-          body: input.body,
-        },
-      ],
-    });
-  });
+    },
+    { id: newId("msg"), at, fromStaffId: null, body },
+  );
   revalidatePath("/panel/enquiries");
 }
 
@@ -719,16 +699,30 @@ export async function createEnquiryAction(input: {
 /* Staff, owner only                                                           */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * The new account's one-time password travels to the team page in this
+ * short-lived cookie, never in a URL (which lands in logs and history) and
+ * never in the database. It is httpOnly, scoped to /panel/team, and gone after
+ * five minutes or when the owner dismisses it.
+ */
+const NEW_STAFF_COOKIE = "ec_new_staff";
+
+/** Ten characters, no lookalikes (no 0/o, 1/l/i). Cryptographically random. */
+function oneTimePassword(): string {
+  const alphabet = "abcdefghjkmnpqrstuvwxyz23456789";
+  return Array.from({ length: 10 }, () => alphabet[crypto.randomInt(alphabet.length)]).join("");
+}
+
 export async function createStaffAction(formData: FormData) {
   const owner = await requireOwner();
-  const name = String(formData.get("name") ?? "").trim();
+  const name = plainText(formData.get("name"), 80);
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
-  const phone = String(formData.get("phone") ?? "").trim();
+  const phone = plainText(formData.get("phone"), 40);
 
   if (name.length === 0 || email.length === 0) {
     redirect(`/panel/team?error=${encodeURIComponent("Name and email are both needed.")}`);
   }
-  if (readData().staff.some((s) => s.email === email)) {
+  if (await emailHasAccount(email)) {
     redirect(`/panel/team?error=${encodeURIComponent("That email already has an account.")}`);
   }
   // Optional, but if one is typed it has to be a real number. Saving a broken
@@ -737,39 +731,45 @@ export async function createStaffAction(formData: FormData) {
     redirect(`/panel/team?error=${encodeURIComponent(`"${phone}" is not a Sri Lankan mobile number.`)}`);
   }
 
-  // The one-time password the client chose: generated, shown once on this
-  // screen, and handed over in person. See HANDOVER section 6.
-  const password = Array.from({ length: 10 }, () =>
-    "abcdefghjkmnpqrstuvwxyz23456789".charAt(Math.floor(Math.random() * 31)),
-  ).join("");
+  // The one-time password the client chose: generated, shown once, handed
+  // over in person. It lives only in Supabase Auth, as a hash.
+  const password = oneTimePassword();
+  const { data, error } = await admin().auth.admin.createUser({ email, password, email_confirm: true });
+  if (error || !data.user) {
+    redirect(`/panel/team?error=${encodeURIComponent(`Could not create the login: ${error?.message ?? "unknown error"}`)}`);
+  }
+  const id = data.user.id;
 
-  const { passwordHash, passwordSalt } = hashPassword(password);
+  try {
+    await insertStaff({ id, name, email, role: "employee", active: true, phone, smsAlerts: true });
+  } catch (insertError) {
+    // No staff row means a login that can never get in. Remove it rather than
+    // leave an orphan in Supabase Auth.
+    await admin().auth.admin.deleteUser(id);
+    throw insertError;
+  }
 
-  const id = newId("staff");
-  writeData((data) => {
-    data.staff.push({
-      id,
-      name,
-      email,
-      role: "employee",
-      passwordHash,
-      passwordSalt,
-      active: true,
-      createdAt: new Date().toISOString(),
-      oneTimePassword: password,
-      phone,
-      smsAlerts: true,
-    });
+  const jar = await cookies();
+  jar.set(NEW_STAFF_COOKIE, JSON.stringify({ id, name, email, password }), {
+    httpOnly: true,
+    sameSite: "strict",
+    secure: process.env.NODE_ENV === "production",
+    path: "/panel/team",
+    maxAge: 5 * 60,
   });
 
-  audit(owner.id, "staff.created", "staff", id, `Created an account for ${name}`);
+  await audit(owner.id, "staff.created", "staff", id, `Created an account for ${name}`);
   revalidatePath("/panel/team");
-  redirect(`/panel/team?created=${id}`);
+  redirect("/panel/team");
 }
 
-/* -------------------------------------------------------------------------- */
-/* SMS alerts, owner only                                                      */
-/* -------------------------------------------------------------------------- */
+/** Forget the one-time password now it has been handed over. */
+export async function dismissOneTimePasswordAction() {
+  await requireOwner();
+  const jar = await cookies();
+  jar.delete({ name: NEW_STAFF_COOKIE, path: "/panel/team" });
+  revalidatePath("/panel/team");
+}
 
 /**
  * Set or clear the number a person's booking alerts go to.
@@ -781,23 +781,19 @@ export async function createStaffAction(formData: FormData) {
 export async function setStaffPhoneAction(formData: FormData) {
   const owner = await requireOwner();
   const id = String(formData.get("id") ?? "");
-  const phone = String(formData.get("phone") ?? "").trim();
+  const phone = plainText(formData.get("phone"), 40);
 
   if (phone.length > 0 && toMsisdn(phone) === null) {
     redirect(`/panel/team?error=${encodeURIComponent(`"${phone}" is not a Sri Lankan mobile number.`)}`);
   }
 
-  const target = readData().staff.find((s) => s.id === id);
+  const target = await getStaff(id);
   if (!target) return;
-
-  writeData((data) => {
-    const staff = data.staff.find((s) => s.id === id);
-    if (staff) staff.phone = phone;
-  });
+  await updateStaff(id, { phone });
 
   // The number itself is not written into the audit summary. It is a personal
   // detail and the log is read by both employees.
-  audit(
+  await audit(
     owner.id,
     phone.length > 0 ? "staff.phone_set" : "staff.phone_cleared",
     "staff",
@@ -812,15 +808,11 @@ export async function setStaffAlertsAction(formData: FormData) {
   const id = String(formData.get("id") ?? "");
   const on = String(formData.get("on") ?? "") === "true";
 
-  const target = readData().staff.find((s) => s.id === id);
+  const target = await getStaff(id);
   if (!target) return;
+  await updateStaff(id, { smsAlerts: on });
 
-  writeData((data) => {
-    const staff = data.staff.find((s) => s.id === id);
-    if (staff) staff.smsAlerts = on;
-  });
-
-  audit(
+  await audit(
     owner.id,
     on ? "staff.alerts_on" : "staff.alerts_off",
     "staff",
@@ -834,14 +826,14 @@ export async function setStaffAlertsAction(formData: FormData) {
  * Send one real text to one person.
  *
  * Awaited, not deferred with after(): the whole point is to stand there and
- * find out whether it worked, so the result has to be in the store before the
- * page re-renders.
+ * find out whether it worked, so the result has to be recorded before the page
+ * re-renders.
  */
 export async function sendTestSmsAction(formData: FormData) {
   const owner = await requireOwner();
   const id = String(formData.get("id") ?? "");
 
-  const target = readData().staff.find((s) => s.id === id);
+  const target = await getStaff(id);
   const msisdn = toMsisdn(target?.phone ?? "");
   if (!target || msisdn === null) {
     redirect(`/panel/team?error=${encodeURIComponent("Save a valid mobile number first.")}`);
@@ -849,7 +841,7 @@ export async function sendTestSmsAction(formData: FormData) {
 
   const row = await sendTestSms({ staffId: target.id, name: target.name, msisdn });
 
-  audit(
+  await audit(
     owner.id,
     "sms.test_sent",
     "staff",
@@ -866,31 +858,25 @@ export async function setStaffActiveAction(formData: FormData) {
 
   if (id === owner.id) return; // never lock yourself out
 
-  const target = readData().staff.find((s) => s.id === id);
-  writeData((data) => {
-    const staff = data.staff.find((s) => s.id === id);
-    if (staff) staff.active = active;
-  });
+  const target = await getStaff(id);
+  if (!target) return;
+  // Takes effect on their next click: getCurrentUser refuses an inactive row
+  // even while their Supabase session is still valid.
+  await updateStaff(id, { active });
 
-  audit(
+  await audit(
     owner.id,
     active ? "staff.enabled" : "staff.disabled",
     "staff",
     id,
-    `${active ? "Enabled" : "Disabled"} ${target?.name ?? id}`,
+    `${active ? "Enabled" : "Disabled"} ${target.name}`,
   );
   revalidatePath("/panel/team");
 }
 
-export async function dismissOneTimePasswordAction(formData: FormData) {
-  await requireOwner();
-  const id = String(formData.get("id") ?? "");
-  writeData((data) => {
-    const staff = data.staff.find((s) => s.id === id);
-    if (staff) staff.oneTimePassword = null;
-  });
-  revalidatePath("/panel/team");
-}
+/* -------------------------------------------------------------------------- */
+/* Public: identity document upload                                            */
+/* -------------------------------------------------------------------------- */
 
 /**
  * One identity document from the public booking form.
@@ -899,10 +885,11 @@ export async function dismissOneTimePasswordAction(formData: FormData) {
  * account and never will. The protection is therefore on the content and not
  * on the caller, and it all lives in lib/panel/uploads.ts: an 8MB cap, and an
  * allowlist checked against the file's magic numbers rather than the
- * Content-Type the browser claims.
+ * Content-Type the browser claims. The private bucket enforces both again.
  *
  * Returns an id. Reading that id back requires a staff session, which is what
- * keeps a write-only drop from becoming a public file host.
+ * keeps a write-only drop from becoming a public file host. An upload no
+ * booking claims is deleted after a day (retention.ts, purgeOrphanUploads).
  */
 export async function uploadBookingDocumentAction(
   formData: FormData,

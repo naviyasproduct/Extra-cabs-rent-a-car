@@ -4,17 +4,15 @@
  * SERVER ONLY.
  *
  * textlk.ts knows how to send one message to one number. This module decides
- * which numbers, writes the words, and records every attempt in the store so a
+ * which numbers, writes the words, and records every attempt in the database so a
  * silent failure (expired credits, unapproved sender ID, wrong number) is
  * visible on /panel/team instead of being lost.
  */
 
-import { newId, readData, writeData } from "@/lib/panel/store";
+import "server-only";
+import { insertSmsMessages, listStaff, newId } from "@/lib/panel/db";
 import type { PanelBooking, SmsKind, SmsMessage } from "@/lib/panel/types";
 import { displayMsisdn, measure, sendSms, toMsisdn } from "./textlk";
-
-/** Keep the log useful without letting the JSON file grow forever. */
-const LOG_LIMIT = 200;
 
 export interface SmsRecipient {
   staffId: string;
@@ -33,9 +31,9 @@ export interface SmsRecipient {
  * Three ways to not be on this list: the account is disabled, alerts are off
  * for that person, or the number is blank or unusable.
  */
-export function bookingRecipients(): SmsRecipient[] {
-  return readData()
-    .staff.filter((staff) => staff.active && staff.smsAlerts !== false)
+export async function bookingRecipients(): Promise<SmsRecipient[]> {
+  return (await listStaff())
+    .filter((staff) => staff.active && staff.smsAlerts !== false)
     .map((staff) => ({
       staffId: staff.id,
       name: staff.name,
@@ -126,12 +124,13 @@ async function deliver(
     });
   }
 
-  if (rows.length > 0) {
-    writeData((data) => {
-      data.messages ??= [];
-      data.messages.unshift(...rows);
-      data.messages.length = Math.min(data.messages.length, LOG_LIMIT);
-    });
+  // Recording must never throw either: the texts have already gone, and the
+  // caller may be finishing a customer's booking. A lost log row is reported
+  // loudly in the server log instead.
+  try {
+    await insertSmsMessages(rows);
+  } catch (error) {
+    console.error(`[sms] ${rows.length} message(s) sent but not logged: ${(error as Error).message}`);
   }
 
   return rows;
@@ -149,14 +148,21 @@ export async function notifyNewBooking(
   booking: PanelBooking,
   vehicleName: string | null,
 ): Promise<void> {
-  const recipients = bookingRecipients();
-  if (recipients.length === 0) {
-    console.warn(
-      `[sms] booking ${booking.reference} created, but nobody has an SMS number set in /panel/team`,
-    );
-    return;
+  // Runs after the customer's response has gone. Nothing here may throw: the
+  // booking is already saved, and a database or gateway hiccup must end up in
+  // the server log, not as an unhandled rejection.
+  try {
+    const recipients = await bookingRecipients();
+    if (recipients.length === 0) {
+      console.warn(
+        `[sms] booking ${booking.reference} created, but nobody has an SMS number set in /panel/team`,
+      );
+      return;
+    }
+    await deliver(recipients, bookingSms(booking, vehicleName), "booking.created");
+  } catch (error) {
+    console.error(`[sms] alert for ${booking.reference} failed: ${(error as Error).message}`);
   }
-  await deliver(recipients, bookingSms(booking, vehicleName), "booking.created");
 }
 
 /** One message to one person, so a new number can be proved before a real booking needs it. */

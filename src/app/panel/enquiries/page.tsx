@@ -1,5 +1,5 @@
 import { requireStaff } from "@/lib/panel/guard";
-import { readData } from "@/lib/panel/store";
+import { listEnquiries, listStaff } from "@/lib/panel/db";
 import { colomboDateTime } from "@/lib/panel/time";
 import { closeEnquiryAction, replyToEnquiryAction } from "../actions";
 
@@ -15,10 +15,10 @@ export const metadata = { title: "Enquiries" };
  */
 export default async function PanelEnquiries() {
   await requireStaff();
-  const data = readData();
+  const [enquiries, staff] = await Promise.all([listEnquiries(), listStaff()]);
 
   const staffName = (id: string | null) =>
-    id ? (data.staff.find((s) => s.id === id)?.name ?? "Unknown") : "Customer";
+    id ? (staff.find((s) => s.id === id)?.name ?? "Unknown") : "Customer";
 
   return (
     <div className="flex flex-col gap-8">
@@ -30,7 +30,7 @@ export default async function PanelEnquiries() {
         </p>
       </div>
 
-      {data.enquiries.length === 0 ? (
+      {enquiries.length === 0 ? (
         <p className="bg-tile p-6 text-sm text-muted">
           Nothing yet. Messages sent through the contact form on the website
           land here.
@@ -38,7 +38,7 @@ export default async function PanelEnquiries() {
       ) : null}
 
       <div className="flex flex-col gap-px bg-line">
-        {data.enquiries.map((enquiry) => (
+        {enquiries.map((enquiry) => (
           <article key={enquiry.id} className="bg-tile p-5">
             <div className="flex flex-wrap items-baseline justify-between gap-3">
               <div>

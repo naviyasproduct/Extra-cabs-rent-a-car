@@ -1,5 +1,21 @@
-import { newId, readData, writeData } from "./store";
-import type { PanelData, PresenceSegment, WorkShift } from "./types";
+import "server-only";
+import {
+  insertAudit,
+  insertSegment,
+  insertShift,
+  listStaff,
+  livePresenceSince,
+  newId,
+  openSegmentForShift,
+  openSegmentsForStaff,
+  openShiftFor,
+  segmentsForShifts,
+  shiftsOn,
+  sweepTimesheet,
+  updateSegment,
+  updateShift,
+} from "./db";
+import type { PresenceSegment, StaffUser, WorkShift } from "./types";
 
 /**
  * The timesheet. See docs/internal-platform-plan.md section 3.
@@ -8,7 +24,7 @@ import type { PanelData, PresenceSegment, WorkShift } from "./types";
  * segments are what the system can prove. Coverage is proven over claimed, and
  * the gap between the two is the whole point.
  *
- * Employees only. The owner is not tracked at all: see `tracksTime` below.
+ * Employees only. The owner is not tracked at all: see `isTimeTracked` below.
  */
 
 export const HEARTBEAT_SECONDS = 20;
@@ -69,24 +85,19 @@ export function formatDuration(seconds: number): string {
  * report is FOR him, so proving his presence would be measuring the reader.
  * Nothing about his hours or his whereabouts is written down.
  *
- * Enforced here, in the data layer, rather than by hiding the buttons, for the
- * same reason as every other rule in this platform: a control that exists only
- * in the UI is a courtesy. `openShift`, `closeShift`, `recordHeartbeat` and
- * `markAway` all refuse an owner, so no route, action or later caller can
- * start recording him by accident.
- *
- * The read side filters as well, so owner rows already sitting in a
- * development store from before this rule stay out of the timesheet rather
- * than needing the store deleted.
+ * Enforced here, in the data layer, rather than by hiding the buttons: a
+ * control that exists only in the UI is a courtesy. `openShift`, `closeShift`,
+ * `recordHeartbeat` and `markAway` all refuse an owner, so no route, action or
+ * later caller can start recording him by accident. The read side filters
+ * too, so an owner row can never reach a report.
  */
-function tracksTime(data: PanelData, staffId: string): boolean {
-  const staff = data.staff.find((s) => s.id === staffId);
-  return staff !== undefined && staff.role !== "owner";
+export function isTimeTracked(user: Pick<StaffUser, "role">): boolean {
+  return user.role !== "owner";
 }
 
-/** True when this person's hours and presence are recorded at all. */
-export function isTimeTracked(staffId: string): boolean {
-  return tracksTime(readData(), staffId);
+/** Ids of everyone whose time is tracked, for filtering reads. */
+async function trackedIds(): Promise<Set<string>> {
+  return new Set((await listStaff()).filter(isTimeTracked).map((s) => s.id));
 }
 
 /* -------------------------------------------------------------------------- */
@@ -94,132 +105,23 @@ export function isTimeTracked(staffId: string): boolean {
 /* -------------------------------------------------------------------------- */
 
 /**
- * Closes presence segments that stopped beating.
- *
- * The plan calls for pg_cron running every minute. There is no scheduler here,
- * so this runs lazily instead: any panel read calls it first. The recorded end
- * is still `lastHeartbeatAt`, the last moment presence was proven, NOT the
- * moment this happened to run. That is the detail that keeps the figure honest
- * whichever way the job is triggered.
+ * Closes presence segments that stopped beating, and shifts left open past
+ * their day. It runs in the database (`panel_sweep`, in
+ * supabase/migrations/20260922000000_panel_functions.sql) because the end it
+ * records is each segment's OWN last heartbeat, the last moment presence was
+ * proven, NOT the moment the sweep ran. That keeps the figure honest however
+ * the job is triggered.
  */
-export function sweepStalePresence(data: PanelData): boolean {
-  const cutoff = Date.now() - PRESENCE_TIMEOUT_SECONDS * 1000;
-  let changed = false;
-
-  for (const segment of data.presence) {
-    if (segment.toAt !== null) continue;
-    if (new Date(segment.lastHeartbeatAt).getTime() >= cutoff) continue;
-
-    segment.toAt = segment.lastHeartbeatAt;
-    segment.endedBy = "heartbeat_timeout";
-    changed = true;
-  }
-
-  // A shift left open past its Colombo day closes with no sign-out time. We do
-  // not know when they left, and inventing a value would be the one dishonest
-  // thing this system could do.
-  const today = colomboDate();
-  for (const shift of data.shifts) {
-    if (shift.signedOutAt !== null || shift.endReason !== null) continue;
-    if (shift.workDate >= today) continue;
-
-    shift.endReason = "shift_expiry";
-    changed = true;
-  }
-
-  return changed;
-}
-
-/** Run the sweeper and persist if it changed anything. */
-export function sweep(): void {
-  writeData((data) => sweepStalePresence(data));
+export async function sweep(): Promise<void> {
+  await sweepTimesheet(PRESENCE_TIMEOUT_SECONDS);
 }
 
 /* -------------------------------------------------------------------------- */
 /* Sign in and out                                                             */
 /* -------------------------------------------------------------------------- */
 
-export function openShift(staffId: string): WorkShift | null {
-  return writeData((data) => {
-    sweepStalePresence(data);
-
-    // No shift for the owner. Callers may call this blindly; the refusal is
-    // here so it cannot be forgotten at a call site.
-    if (!tracksTime(data, staffId)) return null;
-
-    const existing = data.shifts.find(
-      (s) => s.staffId === staffId && s.signedOutAt === null && s.endReason === null,
-    );
-    if (existing) {
-      ensureOpenSegment(data, existing);
-      return existing;
-    }
-
-    const now = new Date().toISOString();
-    const shift: WorkShift = {
-      id: newId("shift"),
-      staffId,
-      workDate: colomboDate(),
-      signedInAt: now,
-      signedOutAt: null,
-      endReason: null,
-    };
-    data.shifts.push(shift);
-    ensureOpenSegment(data, shift);
-
-    data.audit.push({
-      id: newId("aud"),
-      at: now,
-      staffId,
-      action: "shift.sign_in",
-      entity: "shift",
-      entityId: shift.id,
-      summary: "Signed in",
-      accessRequestId: null,
-    });
-
-    return shift;
-  });
-}
-
-export function closeShift(staffId: string, reason: WorkShift["endReason"]): void {
-  writeData((data) => {
-    if (!tracksTime(data, staffId)) return;
-
-    const shift = data.shifts.find(
-      (s) => s.staffId === staffId && s.signedOutAt === null && s.endReason === null,
-    );
-    if (!shift) return;
-
-    const now = new Date().toISOString();
-
-    for (const segment of data.presence) {
-      if (segment.shiftId === shift.id && segment.toAt === null) {
-        segment.toAt = now;
-        segment.endedBy = "sign_out";
-      }
-    }
-
-    shift.signedOutAt = now;
-    shift.endReason = reason;
-
-    data.audit.push({
-      id: newId("aud"),
-      at: now,
-      staffId,
-      action: "shift.sign_out",
-      entity: "shift",
-      entityId: shift.id,
-      summary: "Signed out",
-      accessRequestId: null,
-    });
-  });
-}
-
-function ensureOpenSegment(data: PanelData, shift: WorkShift): PresenceSegment {
-  const open = data.presence.find(
-    (p) => p.shiftId === shift.id && p.toAt === null,
-  );
+async function ensureOpenSegment(shift: WorkShift): Promise<PresenceSegment> {
+  const open = await openSegmentForShift(shift.id);
   if (open) return open;
 
   const now = new Date().toISOString();
@@ -232,8 +134,68 @@ function ensureOpenSegment(data: PanelData, shift: WorkShift): PresenceSegment {
     lastHeartbeatAt: now,
     endedBy: null,
   };
-  data.presence.push(segment);
+  await insertSegment(segment);
   return segment;
+}
+
+export async function openShift(user: StaffUser): Promise<WorkShift | null> {
+  await sweep();
+
+  // No shift for the owner. Callers may call this blindly; the refusal is
+  // here so it cannot be forgotten at a call site.
+  if (!isTimeTracked(user)) return null;
+
+  const existing = await openShiftFor(user.id);
+  if (existing) {
+    await ensureOpenSegment(existing);
+    return existing;
+  }
+
+  const now = new Date().toISOString();
+  const shift: WorkShift = {
+    id: newId("shift"),
+    staffId: user.id,
+    workDate: colomboDate(),
+    signedInAt: now,
+    signedOutAt: null,
+    endReason: null,
+  };
+  await insertShift(shift);
+  await ensureOpenSegment(shift);
+  await insertAudit({
+    staffId: user.id,
+    action: "shift.sign_in",
+    entity: "shift",
+    entityId: shift.id,
+    summary: "Signed in",
+    accessRequestId: null,
+    at: now,
+  });
+  return shift;
+}
+
+export async function closeShift(user: StaffUser, reason: WorkShift["endReason"]): Promise<void> {
+  if (!isTimeTracked(user)) return;
+
+  const shift = await openShiftFor(user.id);
+  if (!shift) return;
+
+  const now = new Date().toISOString();
+  for (const segment of await openSegmentsForStaff(user.id)) {
+    if (segment.shiftId === shift.id) {
+      await updateSegment(segment.id, { toAt: now, endedBy: "sign_out" });
+    }
+  }
+  await updateShift(shift.id, { signedOutAt: now, endReason: reason });
+  await insertAudit({
+    staffId: user.id,
+    action: "shift.sign_out",
+    entity: "shift",
+    entityId: shift.id,
+    summary: "Signed out",
+    accessRequestId: null,
+    at: now,
+  });
 }
 
 /**
@@ -242,37 +204,30 @@ function ensureOpenSegment(data: PanelData, shift: WorkShift): PresenceSegment {
  * The server writes its own clock, never a timestamp sent by the browser: a
  * client clock can be wrong, or deliberately changed.
  */
-export function recordHeartbeat(staffId: string): boolean {
-  return writeData((data) => {
-    sweepStalePresence(data);
+export async function recordHeartbeat(user: StaffUser): Promise<boolean> {
+  await sweep();
 
-    // The owner's presence is never recorded, so his beats are dropped rather
-    // than stored and filtered out later.
-    if (!tracksTime(data, staffId)) return false;
+  // The owner's presence is never recorded, so his beats are dropped rather
+  // than stored and filtered out later.
+  if (!isTimeTracked(user)) return false;
 
-    const shift = data.shifts.find(
-      (s) => s.staffId === staffId && s.signedOutAt === null && s.endReason === null,
-    );
-    if (!shift) return false;
+  const shift = await openShiftFor(user.id);
+  if (!shift) return false;
 
-    const segment = ensureOpenSegment(data, shift);
-    segment.lastHeartbeatAt = new Date().toISOString();
-    return true;
-  });
+  const segment = await ensureOpenSegment(shift);
+  await updateSegment(segment.id, { lastHeartbeatAt: new Date().toISOString() });
+  return true;
 }
 
 /** The tab went away. Best effort only; the sweeper is the source of truth. */
-export function markAway(staffId: string, how: PresenceSegment["endedBy"]): void {
-  writeData((data) => {
-    if (!tracksTime(data, staffId)) return;
+export async function markAway(user: StaffUser, how: PresenceSegment["endedBy"]): Promise<void> {
+  if (!isTimeTracked(user)) return;
 
-    for (const segment of data.presence) {
-      if (segment.staffId === staffId && segment.toAt === null) {
-        segment.toAt = segment.lastHeartbeatAt;
-        segment.endedBy = how;
-      }
-    }
-  });
+  // Each open segment ends at its own last heartbeat, never at "now": the
+  // moment the tab closed is not a moment presence was proven.
+  for (const segment of await openSegmentsForStaff(user.id)) {
+    await updateSegment(segment.id, { toAt: segment.lastHeartbeatAt, endedBy: how });
+  }
 }
 
 /* -------------------------------------------------------------------------- */
@@ -294,13 +249,14 @@ function seconds(from: string, to: string): number {
   return Math.max(0, (new Date(to).getTime() - new Date(from).getTime()) / 1000);
 }
 
+/** Pure: claimed against proven for one shift. */
 export function summariseShift(
   shift: WorkShift,
   allSegments: PresenceSegment[],
 ): ShiftSummary {
   const segments = allSegments
     .filter((s) => s.shiftId === shift.id)
-    .sort((a, b) => a.fromAt.localeCompare(b.fromAt));
+    .sort((a, b) => Date.parse(a.fromAt) - Date.parse(b.fromAt));
 
   const nowIso = new Date().toISOString();
   const open = shift.signedOutAt === null && shift.endReason === null;
@@ -348,35 +304,23 @@ export function summariseShift(
   };
 }
 
-export function shiftsForDate(date: string): ShiftSummary[] {
-  const data = readData();
-  return data.shifts
-    .filter((s) => s.workDate === date && tracksTime(data, s.staffId))
-    .map((s) => summariseShift(s, data.presence))
-    .sort((a, b) => a.shift.signedInAt.localeCompare(b.shift.signedInAt));
+export async function shiftsForDate(date: string): Promise<ShiftSummary[]> {
+  const [shifts, tracked] = await Promise.all([shiftsOn(date), trackedIds()]);
+  const mine = shifts.filter((s) => tracked.has(s.staffId));
+  const segments = await segmentsForShifts(mine.map((s) => s.id));
+  return mine
+    .map((s) => summariseShift(s, segments))
+    .sort((a, b) => Date.parse(a.shift.signedInAt) - Date.parse(b.shift.signedInAt));
 }
 
-export function currentShift(staffId: string): WorkShift | null {
-  const data = readData();
-  if (!tracksTime(data, staffId)) return null;
-
-  return (
-    data.shifts.find(
-      (s) => s.staffId === staffId && s.signedOutAt === null && s.endReason === null,
-    ) ?? null
-  );
+export async function currentShift(user: StaffUser): Promise<WorkShift | null> {
+  if (!isTimeTracked(user)) return null;
+  return openShiftFor(user.id);
 }
 
 /** Who is signed in and proven present within the timeout right now. */
-export function whoIsPresent(): string[] {
-  const data = readData();
-  const cutoff = Date.now() - PRESENCE_TIMEOUT_SECONDS * 1000;
-  return data.presence
-    .filter(
-      (p) =>
-        p.toAt === null &&
-        new Date(p.lastHeartbeatAt).getTime() >= cutoff &&
-        tracksTime(data, p.staffId),
-    )
-    .map((p) => p.staffId);
+export async function whoIsPresent(): Promise<string[]> {
+  const cutoff = new Date(Date.now() - PRESENCE_TIMEOUT_SECONDS * 1000).toISOString();
+  const [live, tracked] = await Promise.all([livePresenceSince(cutoff), trackedIds()]);
+  return live.filter((p) => tracked.has(p.staffId)).map((p) => p.staffId);
 }

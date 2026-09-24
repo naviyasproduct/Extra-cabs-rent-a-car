@@ -1,5 +1,14 @@
+import "server-only";
 import crypto from "node:crypto";
-import { newId, readData, writeData } from "./store";
+import {
+  accessRequestsWithStatus,
+  auditForRequest,
+  getAccessRequest,
+  insertAccessRequest,
+  insertAudit,
+  newId,
+  updateAccessRequest,
+} from "./db";
 import { currentShift } from "./time";
 import type { AccessRequest, StaffUser, WindowScope } from "./types";
 
@@ -32,16 +41,25 @@ export function scopeLabel(scope: WindowScope): string {
   return SCOPES.find((s) => s.id === scope)?.label ?? scope;
 }
 
+/**
+ * The secret mixed into every code hash.
+ *
+ * The repo is public, so the development fallback is public too. In
+ * production a missing PANEL_OTP_PEPPER is a hard error rather than a quiet
+ * fallback to a value anyone can read.
+ */
 function pepper(): string {
-  return process.env.PANEL_OTP_PEPPER ?? "extra-cabs-dev-pepper-change-me";
+  const value = (process.env.PANEL_OTP_PEPPER ?? "").trim();
+  if (value) return value;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("PANEL_OTP_PEPPER is not set. Refusing to hash access codes with the public fallback.");
+  }
+  return "extra-cabs-dev-pepper-change-me";
 }
 
-/** Only the hash is stored, so nobody reading the store can use a live code. */
+/** Only the hash is stored, so nobody reading the database can use a live code. */
 function hashCode(code: string, requestId: string): string {
-  return crypto
-    .createHmac("sha256", pepper())
-    .update(`${requestId}.${code}`)
-    .digest("hex");
+  return crypto.createHmac("sha256", pepper()).update(`${requestId}.${code}`).digest("hex");
 }
 
 function sixDigits(): string {
@@ -50,53 +68,47 @@ function sixDigits(): string {
 
 /* -------------------------------------------------------------------------- */
 
-export function requestWindow(
+export async function requestWindow(
   user: StaffUser,
   scope: WindowScope,
   reason: string,
   targetSlug: string | null,
-): AccessRequest {
-  const shift = currentShift(user.id);
+): Promise<AccessRequest> {
+  const shift = await currentShift(user);
+  const id = newId("acc");
+  const code = sixDigits();
+  const now = new Date();
 
-  return writeData((data) => {
-    const id = newId("acc");
-    const code = sixDigits();
-    const now = new Date();
+  const request: AccessRequest = {
+    id,
+    staffId: user.id,
+    shiftId: shift?.id ?? null,
+    scope,
+    targetSlug,
+    reason: reason.trim().slice(0, 200),
+    codeHash: hashCode(code, id),
+    attempts: 0,
+    status: "awaiting_code",
+    createdAt: now.toISOString(),
+    codeExpiresAt: new Date(now.getTime() + CODE_TTL_MINUTES * 60 * 1000).toISOString(),
+    windowExpiresAt: null,
+    closedAt: null,
+    closeReason: null,
+    devCode: code,
+  };
 
-    const request: AccessRequest = {
-      id,
-      staffId: user.id,
-      shiftId: shift?.id ?? null,
-      scope,
-      targetSlug,
-      reason: reason.trim().slice(0, 200),
-      codeHash: hashCode(code, id),
-      attempts: 0,
-      status: "awaiting_code",
-      createdAt: now.toISOString(),
-      codeExpiresAt: new Date(
-        now.getTime() + CODE_TTL_MINUTES * 60 * 1000,
-      ).toISOString(),
-      windowExpiresAt: null,
-      closedAt: null,
-      closeReason: null,
-      devCode: code,
-    };
-
-    data.accessRequests.push(request);
-    data.audit.push({
-      id: newId("aud"),
-      at: now.toISOString(),
-      staffId: user.id,
-      action: "access.requested",
-      entity: "access",
-      entityId: id,
-      summary: `Asked to ${scopeLabel(scope).toLowerCase()}${targetSlug ? ` (${targetSlug})` : ""}: ${request.reason}`,
-      accessRequestId: id,
-    });
-
-    return request;
+  await insertAccessRequest(request);
+  await insertAudit({
+    staffId: user.id,
+    action: "access.requested",
+    entity: "access",
+    entityId: id,
+    summary: `Asked to ${scopeLabel(scope).toLowerCase()}${targetSlug ? ` (${targetSlug})` : ""}: ${request.reason}`,
+    accessRequestId: id,
+    at: now.toISOString(),
   });
+
+  return request;
 }
 
 export interface RedeemResult {
@@ -111,166 +123,127 @@ export interface RedeemResult {
  * and that failure is written to the audit log because it is exactly the event
  * the owner would want to see.
  */
-export function redeemCode(
+export async function redeemCode(
   user: StaffUser,
   requestId: string,
   code: string,
-): RedeemResult {
-  return writeData((data) => {
-    const request = data.accessRequests.find((r) => r.id === requestId);
-    if (!request) return { ok: false, error: "That request no longer exists." };
+): Promise<RedeemResult> {
+  const request = await getAccessRequest(requestId);
+  if (!request) return { ok: false, error: "That request no longer exists." };
 
-    if (request.staffId !== user.id) {
-      data.audit.push({
-        id: newId("aud"),
-        at: new Date().toISOString(),
-        staffId: user.id,
-        action: "access.wrong_person",
-        entity: "access",
-        entityId: request.id,
-        summary: "Tried to use a code raised by someone else",
-        accessRequestId: request.id,
-      });
-      return { ok: false, error: "That code was not issued to you." };
-    }
-
-    if (request.status !== "awaiting_code") {
-      return { ok: false, error: "That request is no longer waiting for a code." };
-    }
-
-    if (new Date(request.codeExpiresAt).getTime() < Date.now()) {
-      request.status = "burned";
-      request.codeHash = null;
-      request.devCode = null;
-      return { ok: false, error: "That code has expired. Ask for a new one." };
-    }
-
-    const supplied = hashCode(code.trim(), request.id);
-    const expected = request.codeHash ?? "";
-    const a = Buffer.from(supplied);
-    const b = Buffer.from(expected);
-    const matches =
-      a.length === b.length && crypto.timingSafeEqual(a, b);
-
-    if (!matches) {
-      request.attempts += 1;
-      if (request.attempts >= MAX_ATTEMPTS) {
-        request.status = "burned";
-        request.codeHash = null;
-        request.devCode = null;
-        data.audit.push({
-          id: newId("aud"),
-          at: new Date().toISOString(),
-          staffId: user.id,
-          action: "access.attempts_failed",
-          entity: "access",
-          entityId: request.id,
-          summary: `Five wrong codes. Request burned.`,
-          accessRequestId: request.id,
-        });
-        return { ok: false, error: "Too many wrong codes. Ask for a new one." };
-      }
-      return {
-        ok: false,
-        error: `Wrong code. ${MAX_ATTEMPTS - request.attempts} attempts left.`,
-      };
-    }
-
-    // Single use: consumed, then nulled.
-    request.codeHash = null;
-    request.devCode = null;
-    request.status = "open";
-    request.windowExpiresAt = new Date(
-      Date.now() + WINDOW_MINUTES * 60 * 1000,
-    ).toISOString();
-
-    data.audit.push({
-      id: newId("aud"),
-      at: new Date().toISOString(),
+  if (request.staffId !== user.id) {
+    await insertAudit({
       staffId: user.id,
-      action: "access.opened",
+      action: "access.wrong_person",
       entity: "access",
       entityId: request.id,
-      summary: `Window open for ${WINDOW_MINUTES} minutes: ${scopeLabel(request.scope)}`,
+      summary: "Tried to use a code raised by someone else",
       accessRequestId: request.id,
     });
+    return { ok: false, error: "That code was not issued to you." };
+  }
 
-    return { ok: true };
+  if (request.status !== "awaiting_code") {
+    return { ok: false, error: "That request is no longer waiting for a code." };
+  }
+
+  if (new Date(request.codeExpiresAt).getTime() < Date.now()) {
+    await updateAccessRequest(request.id, { status: "burned", codeHash: null, devCode: null });
+    return { ok: false, error: "That code has expired. Ask for a new one." };
+  }
+
+  const supplied = Buffer.from(hashCode(code.trim(), request.id));
+  const expected = Buffer.from(request.codeHash ?? "");
+  const matches = supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected);
+
+  if (!matches) {
+    const attempts = request.attempts + 1;
+    if (attempts >= MAX_ATTEMPTS) {
+      await updateAccessRequest(request.id, { attempts, status: "burned", codeHash: null, devCode: null });
+      await insertAudit({
+        staffId: user.id,
+        action: "access.attempts_failed",
+        entity: "access",
+        entityId: request.id,
+        summary: "Five wrong codes. Request burned.",
+        accessRequestId: request.id,
+      });
+      return { ok: false, error: "Too many wrong codes. Ask for a new one." };
+    }
+    await updateAccessRequest(request.id, { attempts });
+    return { ok: false, error: `Wrong code. ${MAX_ATTEMPTS - attempts} attempts left.` };
+  }
+
+  // Single use: consumed, then nulled.
+  await updateAccessRequest(request.id, {
+    codeHash: null,
+    devCode: null,
+    status: "open",
+    windowExpiresAt: new Date(Date.now() + WINDOW_MINUTES * 60 * 1000).toISOString(),
   });
+  await insertAudit({
+    staffId: user.id,
+    action: "access.opened",
+    entity: "access",
+    entityId: request.id,
+    summary: `Window open for ${WINDOW_MINUTES} minutes: ${scopeLabel(request.scope)}`,
+    accessRequestId: request.id,
+  });
+
+  return { ok: true };
 }
 
-export function closeWindow(
+export async function closeWindow(
   requestId: string,
   closeReason: string,
   byStaffId: string,
-): void {
-  writeData((data) => {
-    const request = data.accessRequests.find((r) => r.id === requestId);
-    if (!request || request.status !== "open") return;
+): Promise<void> {
+  const request = await getAccessRequest(requestId);
+  if (!request || request.status !== "open") return;
 
-    request.status = "closed";
-    request.closedAt = new Date().toISOString();
-    request.closeReason = closeReason;
+  const closedAt = new Date().toISOString();
+  await updateAccessRequest(requestId, { status: "closed", closedAt, closeReason });
 
-    // The summary the owner would have received by SMS. It lives in the
-    // activity feed until the gateway is wired.
-    const changes = data.audit.filter((a) => a.accessRequestId === requestId && a.entity !== "access");
-    const summary =
-      changes.length > 0
-        ? changes.map((c) => c.summary).join("; ")
-        : "No changes were made";
+  // The summary the owner would have received by SMS. It lives in the
+  // activity feed until the gateway is wired.
+  const changes = (await auditForRequest(requestId)).filter((a) => a.entity !== "access");
+  const summary =
+    changes.length > 0 ? changes.map((c) => c.summary).join("; ") : "No changes were made";
 
-    data.audit.push({
-      id: newId("aud"),
-      at: request.closedAt,
-      staffId: byStaffId,
-      action: "access.closed",
-      entity: "access",
-      entityId: requestId,
-      summary: `Window closed (${closeReason}). ${summary}`,
-      accessRequestId: requestId,
-    });
+  await insertAudit({
+    staffId: byStaffId,
+    action: "access.closed",
+    entity: "access",
+    entityId: requestId,
+    summary: `Window closed (${closeReason}). ${summary}`,
+    accessRequestId: requestId,
+    at: closedAt,
   });
 }
 
 /** Expire windows whose time ran out. Cheap, so callers can run it freely. */
-export function expireWindows(): void {
+export async function expireWindows(): Promise<void> {
   const now = Date.now();
-  const stale = readData().accessRequests.filter(
-    (r) =>
-      r.status === "open" &&
-      r.windowExpiresAt !== null &&
-      new Date(r.windowExpiresAt).getTime() < now,
+  const stale = (await accessRequestsWithStatus(["open"])).filter(
+    (r) => r.windowExpiresAt !== null && new Date(r.windowExpiresAt).getTime() < now,
   );
   for (const request of stale) {
-    closeWindow(request.id, "time ran out", request.staffId);
+    await closeWindow(request.id, "time ran out", request.staffId);
   }
 }
 
 /** The employee's currently open window, if any. */
-export function openWindowFor(staffId: string): AccessRequest | null {
-  expireWindows();
-  return (
-    readData().accessRequests.find(
-      (r) => r.staffId === staffId && r.status === "open",
-    ) ?? null
-  );
+export async function openWindowFor(staffId: string): Promise<AccessRequest | null> {
+  await expireWindows();
+  return (await accessRequestsWithStatus(["open"], staffId))[0] ?? null;
 }
 
-export function pendingRequestFor(staffId: string): AccessRequest | null {
-  return (
-    readData().accessRequests.find(
-      (r) => r.staffId === staffId && r.status === "awaiting_code",
-    ) ?? null
-  );
+export async function pendingRequestFor(staffId: string): Promise<AccessRequest | null> {
+  return (await accessRequestsWithStatus(["awaiting_code"], staffId))[0] ?? null;
 }
 
-/** Everything the owner needs to see and act on. */
-export function liveRequests(): AccessRequest[] {
-  expireWindows();
-  return readData()
-    .accessRequests.filter(
-      (r) => r.status === "awaiting_code" || r.status === "open",
-    )
-    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+/** Everything the owner needs to see and act on, newest first. */
+export async function liveRequests(): Promise<AccessRequest[]> {
+  await expireWindows();
+  return accessRequestsWithStatus(["awaiting_code", "open"]);
 }

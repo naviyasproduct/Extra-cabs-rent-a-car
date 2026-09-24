@@ -8,6 +8,10 @@ Goal, in the client's words: when someone searches **"rent a car near Makola"**,
 Section 2 explains honestly how much of that is achievable, which parts are code
 and which are not.
 
+Decisions taken 2026-09-21: **launch once**, not staged: nothing is deployed
+until Supabase and Cloudinary are done and the fleet can be listed. Supabase
+and Cloudinary are created under the **developer's** accounts.
+
 Decisions taken 2026-09-20: full Supabase migration, Cloudinary for vehicle
 photos only, the Google Business Profile exists but the client controls it, and
 the invented ratings and testimonials get stripped.
@@ -120,8 +124,9 @@ though it does not block deployment.
 ### 1d. The legal pages
 
 > **Rewritten 2026-09-21** from the client's policy (100 km a day, no refunds,
-> per-vehicle deposit). Not reviewed by a lawyer. The retention promise in the
-> privacy policy is not yet enforced by the code.
+> per-vehicle deposit). Not reviewed by a lawyer. The 90-day photo rule in
+> the privacy policy is enforced by `lib/panel/retention.ts` since 2026-09-21,
+> currently run from the bookings screen; it becomes a `pg_cron` job in phase 4.
 
 `/privacy` and `/terms` are unvetted drafts, and `/privacy` does not mention
 that the site collects NIC, passport and driving licence images, which it does.
@@ -294,14 +299,15 @@ Say this out loud early, because it manages the only expectation that matters:
 > answers unauthenticated). That turns two development shortcuts into open
 > doors the moment the site is deployed:
 >
-> - **The test accounts.** `TEST_ACCOUNTS` in `src/lib/panel/store.ts` and the
->   table in `docs/panel.md` publish `owner1234` and the two employee
->   passwords. A fresh deploy seeds exactly those accounts, so **anyone who
->   reads the repo can sign in to `/panel` as the owner**: bookings, customer
->   ID photos, fleet, staff. Replace the seed with real accounts created from
->   environment variables (or Supabase Auth) before the first deploy, and
->   delete the table from `panel.md`.
-> - **The session secret fallback**, see `PANEL_SESSION_SECRET` in 3b.
+> - ~~**The test accounts.**~~ **Resolved 2026-09-22.** The seeded
+>   `owner1234` accounts and the file store that created them are gone; sign-in
+>   is Supabase Auth, the owner is created once with
+>   `scripts/create-owner.mjs`, and the password table is out of `panel.md`.
+>   The old passwords remain in git history: treat them as burned.
+> - ~~**The session secret fallback.**~~ **Resolved 2026-09-22.** The
+>   home-made session cookie is gone, so `PANEL_SESSION_SECRET` no longer
+>   exists. Its replacement worry, `PANEL_OTP_PEPPER`, now **refuses to run in
+>   production without a value** rather than fall back.
 >
 > Consider making the repo private. Either way, anything already pushed is
 > public for good: the owner's mobile number was in `docs/sms.md` (removed
@@ -311,10 +317,8 @@ Say this out loud early, because it manages the only expectation that matters:
 > add every vehicle through the panel. That makes two later phases launch
 > critical rather than follow-ups:
 >
-> - **Supabase (phase 4).** On Vercel the panel store is memory, one copy per
->   server bundle. A vehicle added in the panel saves and then **never appears
->   on the public site**, and vanishes on the next deploy. Until phase 4 the
->   live site can have no vehicles at all.
+> - ~~**Supabase (phase 4).**~~ **Done 2026-09-22.** The panel runs on the
+>   live Supabase project; vehicles, bookings and ID photos persist.
 > - **Photo upload (phase 5).** Panel-added vehicles have no photos and show a
 >   placeholder tile. There is no way to add one yet.
 >
@@ -336,10 +340,13 @@ Say this out loud early, because it manages the only expectation that matters:
 
 1. Import the GitHub repo. Next.js is auto-detected, no build settings needed.
 2. Production branch `main`. Every other branch gets a preview URL.
-3. **Set the function region to Singapore (`sin1`).** The default is US East,
-   which adds roughly 200ms of round trip to every server-rendered page for a
-   Sri Lankan visitor. This is the single largest performance win available at
-   deploy time and it is a dropdown.
+3. **Set the function region to Mumbai (`bom1`), the same city as the
+   Supabase project (`ap-south-1`).** The default is US East, roughly 200ms
+   from a Sri Lankan visitor. Corrected 2026-09-21 from Singapore: once there
+   is a database, what matters most is the functions sitting next to it,
+   because one panel page makes several queries and each one pays the
+   function-to-database distance. Mumbai is also the closest region to
+   Colombo for both providers.
 4. Environment variables, Production and Preview separately:
 
    | Variable | Production | Preview |
@@ -348,16 +355,27 @@ Say this out loud early, because it manages the only expectation that matters:
    | `TEXTLK_API_TOKEN` | the token | the token |
    | `TEXTLK_SENDER_ID` | `zsensu.com` | `zsensu.com` |
    | `SMS_ENABLED` | `true` | **`false`** |
-   | `PANEL_SESSION_SECRET` | **a long random string** | a different one |
-   | `SUPABASE_*` | phase 4 | phase 4 |
+   | `NEXT_PUBLIC_SUPABASE_URL` | the project URL | same |
+   | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | the anon key | same |
+   | `SUPABASE_SERVICE_ROLE_KEY` | **secret** | same |
+   | `PANEL_OTP_PEPPER` | **a long random string** | same |
+   | `CRON_SECRET` | **a long random string** | not needed |
    | `CLOUDINARY_*` | phase 5 | phase 5 |
 
-   > **`PANEL_SESSION_SECRET` is a security requirement, not a setting.**
-   > `src/lib/panel/auth.ts` signs staff session cookies with it and **falls
-   > back to a hardcoded string that is in the repo**. Without it set, anyone
-   > who reads the code can mint a valid owner cookie and walk into `/panel`.
-   > Generate one with `node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`.
-   > Found 2026-09-21. Until Supabase Auth replaces this, it guards everything.
+   `SUPABASE_DB_PASSWORD` is only for pushing migrations from a terminal; it
+   does not belong on Vercel.
+
+   > **`PANEL_OTP_PEPPER` and `CRON_SECRET` are required, not optional.**
+   > Without the pepper, employees cannot request an edit window at all (the
+   > app refuses to hash codes with the public fallback; this was proven
+   > against a production build). Without `CRON_SECRET` the daily ID-photo
+   > retention run refuses to start. Generate each with
+   > `node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+
+   > **Preview deployments share the live database.** There is one Supabase
+   > project, so a booking made on a preview URL is a real booking in the real
+   > panel. Either keep previews for eyeballing only, or turn preview
+   > deployments off until a second Supabase project exists.
 
    > `SMS_ENABLED=false` on Preview is not optional while credit is at 4 units.
    > Every test booking on a preview URL would otherwise text the owner and
@@ -407,12 +425,19 @@ Then:
 Full migration, decided 2026-09-20. The panel does not work on Vercel without
 it.
 
-**Ownership first.** Create the project under the **client's** account with you
-granted access, not under yours. Otherwise handover becomes a migration and
-there is a bus factor. The exception is if the payment leverage discussed for
-the SMS sender ID also applies here, in which case that is a deliberate
-commercial decision and should be a conscious one, not an accident of who
-clicked sign up. See HANDOVER section 7b.
+**Ownership: decided 2026-09-21, the developer's account.** A deliberate
+commercial choice, same as the SMS sender ID. What it means in practice:
+
+- The database holds the client's customers' names, numbers and ID photos.
+  Under the PDPA the **client** is the controller of that data and the
+  developer is holding it on their behalf. Put that in writing with the client,
+  one paragraph, before real customer data goes in.
+- **Keep the payment lever on the service, not the data.** Switching off the
+  SMS sender is a service you provide. Refusing the client access to their own
+  customers' records is a different thing, and it is the kind of step that
+  turns a payment dispute into a data protection complaint.
+- Handover later is a project transfer in the Supabase dashboard, not a
+  migration, as long as nothing else is built on the account.
 
 **Cost.** The free tier is not appropriate for a production system running
 `pg_cron` every minute for the presence sweeper. Get the current figure and put
@@ -514,7 +539,7 @@ Dependencies, so nothing waits on the wrong thing.
 - Phase 3a, fix `lint`, tag a baseline commit.
 
 **Week 1 to 2**
-- Phase 3b, Vercel project on the `.vercel.app` URL, region `sin1`.
+- Phase 3b, Vercel project on the `.vercel.app` URL, region `bom1`.
 - Phase 2d and 2e, the structured data and technical SEO fixes.
 - Phase 2c, the Colombo copy, once the client answers on the delivery radius.
 

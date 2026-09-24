@@ -1,56 +1,77 @@
+import "server-only";
+import { SYSTEM_STAFF_ID, insertAudit, listBookings, updateBooking } from "./db";
+import { deleteDocuments, listStoredDocuments } from "./uploads";
+import { colomboDay, documentsExpired } from "./retention-rules";
+
 /**
  * Carries out the retention rule in retention-rules.ts: deletes identity
  * photos whose time is up and keeps the booking record.
  *
- * SERVER ONLY.
- *
- * Run from the bookings screen on every load, because there is no scheduler
- * yet. That is enough while the store is a local file. When Supabase lands
- * this becomes a pg_cron job, since a rule that only runs when someone opens a
- * page stops running the week nobody does. See HANDOVER, 2026-09-21.
+ * SERVER ONLY. Called from the bookings screen on every load, and meant to be
+ * called by a daily scheduled job too (see HANDOVER), because a rule that runs
+ * only when someone opens a page stops running the week nobody does.
  */
 
-import { newId, readData, writeData } from "./store";
-import { deleteDocument } from "./uploads";
-import { colomboDay, documentsExpired } from "./retention-rules";
+export { SYSTEM_STAFF_ID };
 
-/** Audit rows written by the rule itself rather than by a person. */
-export const SYSTEM_STAFF_ID = "system";
+/**
+ * Uploads older than this with no booking pointing at them are orphans: a
+ * customer uploaded ID photos and then abandoned the booking form. A day is
+ * generous; the form takes minutes.
+ */
+export const ORPHAN_AFTER_HOURS = 24;
 
 /** Deletes every expired set of photos. Returns how many bookings it cleared. */
-export function purgeExpiredDocuments(now: Date = new Date()): number {
+export async function purgeExpiredDocuments(now: Date = new Date()): Promise<number> {
   const today = colomboDay(now.toISOString());
-  const due = readData().bookings.filter((booking) => documentsExpired(booking, today));
-  if (due.length === 0) return 0;
+  const due = (await listBookings()).filter((booking) => documentsExpired(booking, today));
 
-  // Files first, record second. If the process dies between the two, the next
-  // run finds the booking still listing documents and tries again, and
-  // deleting an already-deleted file is harmless.
   for (const booking of due) {
-    for (const document of booking.documents) deleteDocument(document.id);
+    // Files first, record second. If this dies in between, the next run finds
+    // the booking still listing documents and tries again; deleting a file
+    // that is already gone is harmless. deleteDocuments throws on a storage
+    // error, so a booking is never marked purged while its photos remain.
+    await deleteDocuments(booking.documents.map((d) => d.id));
+    const at = now.toISOString();
+    await updateBooking(booking.id, { documents: [], documentsPurgedAt: at });
+    await insertAudit({
+      staffId: SYSTEM_STAFF_ID,
+      action: "booking.documents_purged",
+      entity: "booking",
+      entityId: booking.id,
+      summary: `Deleted ID photos for ${booking.reference} under the retention rule`,
+      accessRequestId: null,
+      at,
+    });
   }
 
-  const at = now.toISOString();
-  const ids = new Set(due.map((booking) => booking.id));
-  writeData((data) => {
-    for (const booking of data.bookings) {
-      if (!ids.has(booking.id)) continue;
-      booking.documents = [];
-      booking.documentsPurgedAt = at;
-    }
-    for (const booking of due) {
-      data.audit.push({
-        id: newId("aud"),
-        at,
-        staffId: SYSTEM_STAFF_ID,
-        action: "booking.documents_purged",
-        entity: "booking",
-        entityId: booking.id,
-        summary: `Deleted ID photos for ${booking.reference} under the retention rule`,
-        accessRequestId: null,
-      });
-    }
-  });
-
   return due.length;
+}
+
+/**
+ * Deletes uploads that no booking points at and that are older than
+ * ORPHAN_AFTER_HOURS. Returns how many it removed.
+ *
+ * Nothing did this before 2026-09-22, in the file store or anywhere else: an
+ * abandoned booking form left a customer's NIC photographs in storage for
+ * ever, with no record anywhere explaining why we held them.
+ */
+export async function purgeOrphanUploads(now: Date = new Date()): Promise<number> {
+  const referenced = new Set(
+    (await listBookings()).flatMap((booking) => booking.documents.map((d) => d.id)),
+  );
+  const cutoff = now.getTime() - ORPHAN_AFTER_HOURS * 60 * 60 * 1000;
+  const orphans = (await listStoredDocuments())
+    .filter((object) => !referenced.has(object.id) && Date.parse(object.createdAt) < cutoff)
+    .map((object) => object.id);
+
+  await deleteDocuments(orphans);
+  return orphans.length;
+}
+
+/** Both sweeps, for the scheduled job. */
+export async function runRetention(now: Date = new Date()): Promise<{ expired: number; orphans: number }> {
+  const expired = await purgeExpiredDocuments(now);
+  const orphans = await purgeOrphanUploads(now);
+  return { expired, orphans };
 }

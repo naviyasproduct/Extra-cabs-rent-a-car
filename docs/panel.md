@@ -1,24 +1,35 @@
 # The internal platform, as built
 
 Phase 1 to 3 of [`internal-platform-plan.md`](./internal-platform-plan.md),
-running against a local store instead of Supabase. No SMS.
+**on Supabase since 2026-09-22**: Postgres for the data, Supabase Auth for
+sign-in, a private Storage bucket for customer ID photos. Booking alerts go
+out by SMS (see [`sms.md`](./sms.md)); the access code does not yet.
 
 Sign in at **`/999p7k`**.
 
 ---
 
-## Test accounts
+## Accounts
 
-Development only. Defined in `TEST_ACCOUNTS` in `src/lib/panel/store.ts`,
-hashed with scrypt on first run so the store never holds plaintext.
+There are **no test accounts and no sign-up page**. The old development
+accounts were published in a public repo and are gone from the code; their
+passwords remain in git history, so treat them as burned.
 
-| Role | Email | Password |
-| --- | --- | --- |
-| Owner | `owner@extracabs.lk` | `owner1234` |
-| Employee | `kasun@extracabs.lk` | `kasun1234` |
-| Employee | `nuwan@extracabs.lk` | `nuwan1234` |
+- **The owner**, once, from a terminal:
 
-**Delete that block before this is reachable by anyone else.**
+  ```
+  node --env-file=.env.local scripts/create-owner.mjs "Full Name" owner@example.com [mobile]
+  ```
+
+  It prints a generated password **once**; Supabase Auth keeps only a hash.
+  It refuses to run if an owner already exists, and the database allows only
+  one.
+- **Employees**: the owner creates them on `/panel/team`. The one-time
+  password is shown once, carried in a five minute httpOnly cookie, never in a
+  URL and never stored anywhere but Supabase Auth.
+- **Disabling** an employee locks them out on their next click: every request
+  checks the `staff` row, not only the Supabase session.
+- Supabase Auth holds the passwords and rate-limits repeated sign-in attempts.
 
 ---
 
@@ -129,28 +140,40 @@ two hours, flags the shift.
 ## Where things live
 
 ```
-src/lib/panel/types.ts    domain types
-src/lib/panel/store.ts    JSON store, scrypt, TEST_ACCOUNTS
-src/lib/panel/auth.ts     HMAC session cookie, sign-in
+src/lib/supabase/         env checks, the admin (service role) and auth clients
+src/lib/panel/types.ts    domain types, one per table
+src/lib/panel/db.ts       EVERY table read and write; nothing else touches them
+src/lib/panel/auth.ts     Supabase Auth sign-in plus the active staff row check
 src/lib/panel/guard.ts    requireStaff / requireOwner / assertCanWrite
 src/lib/panel/time.ts     shifts, presence, sweeper, coverage
 src/lib/panel/window.ts   OTP lifecycle
 src/lib/panel/vehicle-form.ts  pure parsers for the vehicle forms
+src/lib/panel/uploads.ts  ID photos in the private id-documents bucket
+src/lib/panel/retention*.ts  the 90 / 30 day photo rule and the orphan sweep
 src/lib/sms/textlk.ts     Text.lk gateway, phone numbers, segment counting
 src/lib/sms/notify.ts     who gets a booking alert, what it says, the log
-src/lib/fleet.ts          catalogue + overrides, public vs staff views
-src/proxy.ts              cookie check on /panel (NOT middleware.ts)
+src/lib/fleet.ts          the vehicles table, public vs staff views
+src/proxy.ts              Supabase session refresh and gate on /panel (NOT middleware.ts)
 src/app/999p7k/           sign in
 src/app/panel/            the screens
-src/app/panel/actions.ts  every mutation
-src/app/api/panel/        heartbeat, away
+src/app/panel/actions.ts  every mutation, plus the three public forms
+src/app/api/panel/        heartbeat, away, documents/[id]
+src/app/api/cron/retention  the daily retention run (scheduled in vercel.json)
+scripts/create-owner.mjs  creates the one owner account
+supabase/migrations/      schema, RLS, the reference sequence, the sweeper
 ```
 
-Data lives in `.data/panel.json`, gitignored. Delete it to reset.
+Data lives in the Supabase project. The old `.data/` folder is read by
+nothing any more and can be deleted.
 
 ---
 
 ## Two caching traps, both already hit
+
+> The first trap below belonged to the JSON file store, which is gone. It is
+> kept because the lesson still applies: Next compiles separate server
+> bundles, each with its own module state, so anything cached in a module
+> variable can go stale across them.
 
 Panel edits were saving to the store but never showing on the website. Two
 separate causes, and fixing only one of them looked like no fix at all.
@@ -189,12 +212,7 @@ are still static.
 
 ## Known limits
 
-- **The store is a scaffold.** One JSON file, no transactions, no concurrency
-  control. Fine for three users on one process; it is the guarantee that
-  improves when this becomes Postgres.
-- **On Vercel the writes fall back to memory** and reset on redeploy. The
-  filesystem is read only there. This is meant to be run locally for now.
-- **Booking alerts by SMS are built but dormant.** Every website booking texts
+- **Booking alerts by SMS are built.** Every website booking texts
   the owner and every staff member with a number saved, through Text.lk. It
   sends nothing until `TEXTLK_API_TOKEN` and `TEXTLK_SENDER_ID` are set; until
   then each attempt is logged as `skipped` and printed to the server console.
@@ -204,19 +222,21 @@ are still static.
   written, so moving the OTP onto it is a small job.
 - **The customer is never texted**, only staff. Enquiries from the contact form
   do not text anyone either.
-- **Sessions are not revocable** beyond the 12 hour expiry, because there is no
-  session table yet.
+- **Sessions are revocable in effect:** disabling an account on `/panel/team`
+  locks it out on the next request, because every request checks the staff
+  row. Changing an employee's password from the panel is not built yet.
 - **Add sets everything; edit sets most of it.** The add form now covers every
   field the vehicle page renders: the vehicle, the daily rate with its six-row long-hire table, the deposit, the with-driver rate, and the copy
   (tagline, "About this vehicle", "Features and equipment"). The edit form
   covers name, seats, doors, fuel, the hybrid flag, the daily rate, the long-hire table, the deposit, the
   home-page flag and all three copy fields. **Still not editable after
   creation:** brand, year, category, luggage, transmission, engine size and the
-  with-driver rate. Those are set on create and then frozen, because
-  `VehicleOverride` has no fields for them yet. Adding them is mechanical: a field on the override, a line in
-  `applyOverride()`, a control on the edit form.
-- **Photo upload is not built.** Vehicles added in the panel reuse the three
-  stock photos. `fleet.photos` exists as a scope with nothing behind it.
+  with-driver rate. Those are set on create and then frozen. Adding them is
+  mechanical now that an edit updates the `vehicles` row directly: a line in
+  `updateVehicleAction()` and a control on the edit form.
+- **Photo upload is not built.** Vehicles show a placeholder tile until the
+  Cloudinary upload lands. `fleet.photos` exists as a scope with nothing
+  behind it.
 - **Break-glass access is not built.** If the owner is unreachable the employee
   is blocked, which is the open decision in HANDOVER section 7c.
 - **A booked vehicle 404s its own detail page.** It leaves the list, the

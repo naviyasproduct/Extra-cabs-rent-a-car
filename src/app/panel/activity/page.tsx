@@ -1,7 +1,6 @@
 import { requireStaff } from "@/lib/panel/guard";
-import { readData } from "@/lib/panel/store";
+import { SYSTEM_STAFF_ID, listAudit, listStaff } from "@/lib/panel/db";
 import { colomboDateTime } from "@/lib/panel/time";
-import { SYSTEM_STAFF_ID } from "@/lib/panel/retention";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Activity" };
@@ -15,17 +14,18 @@ export const metadata = { title: "Activity" };
  */
 export default async function PanelActivity() {
   const user = await requireStaff();
-  const data = readData();
-
-  const entries = [...data.audit]
-    .reverse()
-    .filter((entry) => user.role === "owner" || entry.staffId === user.id);
+  // Newest first, filtered in the query: an employee's request never even
+  // fetches anyone else's entries.
+  const [entries, staff] = await Promise.all([
+    listAudit({ staffId: user.role === "owner" ? undefined : user.id, limit: 500 }),
+    listStaff(),
+  ]);
 
   // "system" is the retention rule deleting ID photos on its own schedule.
   const staffName = (id: string) =>
     id === SYSTEM_STAFF_ID
       ? "Automatic"
-      : (data.staff.find((s) => s.id === id)?.name ?? "Unknown");
+      : (staff.find((s) => s.id === id)?.name ?? "Unknown");
 
   return (
     <div className="flex flex-col gap-8">
