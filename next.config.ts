@@ -16,6 +16,29 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "10mb",
     },
   },
+  async headers() {
+    return [
+      {
+        // The same deployment answers on extracabs.lk AND on its
+        // *.vercel.app address. Both serve the whole site, so without this
+        // the vercel.app copy is a second, fully crawlable version of every
+        // page, competing with the real domain for the exact searches this
+        // site is being built to win.
+        //
+        // X-Robots-Tag, not robots.txt: robots.txt is one static file for the
+        // deployment and cannot answer differently per host, and a
+        // disallowed URL can still be indexed from a link. This header is the
+        // instruction not to index, and it is host-scoped.
+        //
+        // Deliberately NOT a redirect to extracabs.lk: the vercel.app address
+        // has to stay usable for testing, including before the domain
+        // resolves. Canonicals already point at NEXT_PUBLIC_SITE_URL.
+        source: "/:path*",
+        has: [{ type: "host", value: "(?<vercelHost>.+[.]vercel[.]app)" }],
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      },
+    ];
+  },
   images: {
     // Vehicle photos come from Cloudinary. SafeImage attaches a Cloudinary
     // loader for them, so Next's optimiser is bypassed and this pattern is a

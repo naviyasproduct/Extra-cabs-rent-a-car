@@ -2962,6 +2962,79 @@ get the Cloudinary loader). `tsc` clean, build passes.
 > there, which is right: it is only for pushing migrations from a terminal.
 > **Cloudinary's three values still have to be added to Vercel.**
 
+### 2026-09-24 (later) - Owner account, Cloudinary on Vercel, counter reset
+
+- **The real owner exists:** Shanaka, `extracabsinfo@gmail.com`, created with
+  `scripts/create-owner.mjs`. **His phone is blank**, so he gets no booking
+  alert texts until a number is typed into `/panel/team`.
+  `shanaka@extracabs.lk` was not used because no mailbox exists on the domain
+  yet and the address matters for password resets.
+- Cloudinary's three values are now on Vercel as well as in `.env.local`.
+  `SUPABASE_DB_PASSWORD` has been removed from Vercel, which is right.
+- **Booking references restart at EC-0001.** Two migrations:
+  `20260924000000_reset_booking_reference.sql`, then
+  `20260924010000_reset_booking_reference_again.sql`.
+
+> **Why two.** The only way to read this sequence is to take a number from it,
+> so proving the first reset had worked consumed EC-0001 and EC-0002. The
+> second migration gives them back. `supabase db dump --data-only` did not
+> emit a `setval` line for the sequence, so it could not be used as proof
+> either. The reset is confirmed (it returned EC-0001 then EC-0002) and then
+> re-applied; **the next call is EC-0001 and it has deliberately not been
+> checked again**, because checking would spend it.
+>
+> Both migrations carry the same warning: **never run them once real bookings
+> exist**, or references repeat, which is the fault the sequence exists to
+> prevent.
+
+**The live project holds nothing but the owner:** every table empty, no
+uploads, no Cloudinary objects.
+
+---
+
+### 2026-09-24 (deploy) - The vercel.app address will not be indexed
+
+The deployment answers on **two hostnames**: `extracabs.lk` once the domain is
+connected, and its `*.vercel.app` address, which works now and keeps working
+afterwards. Both serve the whole site, so without something to stop it Google
+gets **a second, fully crawlable copy of every page**, competing with the real
+domain for the exact searches this site is being built to win. Preview
+deployments have the same problem and their own hostnames.
+
+`next.config.ts` now sends `X-Robots-Tag: noindex, nofollow` on every response
+whose `Host` ends in `.vercel.app`.
+
+- **A header, not `robots.txt`.** `robots.txt` is one file for the deployment
+  and cannot answer differently per host, and a disallowed URL can still be
+  indexed from a link elsewhere. `X-Robots-Tag` is the instruction not to
+  index, and Next's `headers()` can scope it by host.
+- **Not a redirect to extracabs.lk.** The vercel.app address has to stay usable
+  for testing, including right now while the domain does not resolve yet.
+  Canonicals already point at `NEXT_PUBLIC_SITE_URL`.
+
+> **The dots are not literal by default, and the first version was wrong.**
+> `has: [{ type: "host", value: "(?<h>.*).vercel.app" }]` matched the host
+> `extracabsXvercelYapp`, because path-to-regexp treats `.` inside a custom
+> group as any character. A backslash escape through this config is the escape
+> trap this repo keeps hitting, so the pattern uses a character class instead:
+> **`(?<vercelHost>.+[.]vercel[.]app)`**. No backslashes to survive, and the
+> dots are literal.
+
+**Proven on a served production build, 17 checks, all passing.** `Host` headers
+were set by hand rather than trusted: `/`, `/fleet`, `/booking`, `/contact`,
+`/robots.txt` and `/sitemap.xml` all carry the header on
+`extra-cabs.vercel.app` and **none of them carry it on `extracabs.lk` or
+`www.extracabs.lk`**; a preview-style host is covered; and the two near-miss
+hosts (`extracabsXvercelYapp`, `extracabs.lk.myvercel.app.evil.com`) are
+correctly left indexable, which is what proves the rule can tell hosts apart
+rather than tagging everything.
+
+> **`NEXT_PUBLIC_SITE_URL` on Vercel is still the vercel.app address.** Every
+> canonical, every sitemap entry, every Open Graph URL and every JSON-LD URL is
+> built from it, so the site is currently telling crawlers it lives there.
+> **Change it to `https://extracabs.lk` and redeploy.** The noindex header
+> above limits the damage; it does not fix this.
+
 ---
 
 ## 9. Working agreements
