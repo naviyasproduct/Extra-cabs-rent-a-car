@@ -79,7 +79,7 @@ import type {
  * the caller is.
  *
  * The public actions (createBookingAction, createEnquiryAction,
- * uploadBookingDocumentAction) are callable by anyone, not only by the forms
+ * the two booking document actions) are callable by anyone, not only by the forms
  * that use them, so they accept only what a customer can legitimately send and
  * clamp everything else.
  *

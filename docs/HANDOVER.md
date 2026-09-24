@@ -2867,7 +2867,8 @@ end of this entry.
   by design, it is in every delivery URL) and the URL builder. Photos are
   stored as **public ids**, not URLs, so delivery options can change without
   rewriting a database row.
-- `src/lib/panel/vehicle-photos.ts` is **server only** and signs every upload
+- `src/lib/panel/vehicle-photos.ts` (replaced by `vehicle-media.ts` on
+  2026-09-24) is **server only** and signs every upload
   and delete with the API secret. **Deliberately not an unsigned upload
   preset:** an unsigned preset lets anyone who reads the page JavaScript
   upload into the account. No SDK; a signed call is a POST plus a SHA-1.
