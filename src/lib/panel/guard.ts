@@ -1,7 +1,7 @@
 import "server-only";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "./auth";
-import { openWindowFor } from "./window";
+import { openWindowFor, openWindowForScope } from "./window";
 import { sweep } from "./time";
 import type { StaffUser, WindowScope } from "./types";
 
@@ -66,6 +66,26 @@ export async function assertCanWrite(
     throw new WindowRequiredError(scope);
   }
 
+  return open.id;
+}
+
+/**
+ * A write that needs a code EVEN FROM THE OWNER.
+ *
+ * `assertCanWrite` lets the owner past without a window, which is right for
+ * running the business: he does not ask himself for permission. Resetting an
+ * employee's password is different. It hands over the ability to sign in as
+ * that person, so the code texted to his phone is a second factor on his own
+ * account rather than a permission he is granting, and the audit trail then
+ * shows a confirmed reset instead of a bare one.
+ */
+export async function assertConfirmed(
+  user: StaffUser,
+  scope: WindowScope,
+  target: string | null,
+): Promise<string> {
+  const open = await openWindowForScope(user.id, scope, target);
+  if (!open) throw new WindowRequiredError(scope);
   return open.id;
 }
 

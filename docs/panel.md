@@ -90,9 +90,8 @@ removing a vehicle needs a code:
 
 1. Employee picks a scope and a reason on the fleet screen.
 2. A six digit code is generated, HMAC hashed with a pepper, and stored.
-   **There is no SMS yet, so it appears on the owner's dashboard** for him to
-   read out. `devCode` in `src/lib/panel/types.ts` is the only part that
-   changes when Text.lk is wired.
+   **It is texted to the owner's mobile** and also shown on his dashboard, so
+   a failed send or an empty SMS balance never stops the work.
 3. The employee types it in. The window opens for 45 minutes with a countdown.
 4. Finish and lock, or it expires, or the owner revokes it.
 
@@ -227,7 +226,11 @@ are still static.
   do not text anyone either.
 - **Sessions are revocable in effect:** disabling an account on `/panel/team`
   locks it out on the next request, because every request checks the staff
-  row. Changing an employee's password from the panel is not built yet.
+  row.
+- **An employee's password can be reset** from `/panel/team`, confirmed by a
+  code to the owner's own mobile. That code is a second factor on his account,
+  not a permission, so `assertConfirmed()` refuses him without it where
+  `assertCanWrite()` would not.
 - **Add sets everything; edit sets most of it.** The add form now covers every
   field the vehicle page renders: the vehicle, the daily rate with its six-row long-hire table, the deposit, the with-driver rate, and the copy
   (tagline, "About this vehicle", "Features and equipment"). The edit form

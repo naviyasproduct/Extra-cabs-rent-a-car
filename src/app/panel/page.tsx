@@ -113,7 +113,7 @@ export default async function PanelHome() {
                       {request.devCode}
                     </p>
                     <p className="mt-1 text-xs text-muted">
-                      No SMS yet, so it shows here
+                      Also sent to your mobile
                     </p>
                   </div>
                 ) : (

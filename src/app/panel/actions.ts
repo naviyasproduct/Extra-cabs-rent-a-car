@@ -5,7 +5,13 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
-import { requireOwner, requireStaff, assertCanWrite, WindowRequiredError } from "@/lib/panel/guard";
+import {
+  requireOwner,
+  requireStaff,
+  assertCanWrite,
+  assertConfirmed,
+  WindowRequiredError,
+} from "@/lib/panel/guard";
 import { emailHasAccount, signOut } from "@/lib/panel/auth";
 import {
   deleteBookingRow,
@@ -28,7 +34,13 @@ import {
   vehicleSlugExists,
 } from "@/lib/panel/db";
 import { closeShift, openShift, markAway } from "@/lib/panel/time";
-import { closeWindow, redeemCode, requestWindow, scopeLabel } from "@/lib/panel/window";
+import {
+  closeWindow,
+  redeemCode,
+  REQUESTABLE_SCOPES,
+  requestWindow,
+  scopeLabel,
+} from "@/lib/panel/window";
 import { publicCarBySlug, vehicleBySlug } from "@/lib/fleet";
 import type { MediaKind } from "@/lib/cloudinary";
 import {
@@ -47,7 +59,7 @@ import {
   type StagingTicket,
   type UploadedMedia,
 } from "@/lib/panel/vehicle-media";
-import { notifyNewBooking, sendTestSms } from "@/lib/sms/notify";
+import { notifyAccessCode, notifyNewBooking, sendTestSms } from "@/lib/sms/notify";
 import { toMsisdn } from "@/lib/sms/textlk";
 import { admin } from "@/lib/supabase/admin";
 import {
@@ -160,18 +172,27 @@ export async function awayAction() {
 /* The write window                                                            */
 /* -------------------------------------------------------------------------- */
 
-const SCOPE_IDS: WindowScope[] = [
-  "fleet.create", "fleet.update", "fleet.delete", "fleet.photos", "pricing.update", "booking.delete",
-];
-
 export async function requestWindowAction(formData: FormData) {
   const user = await requireStaff();
   const scope = String(formData.get("scope") ?? "") as WindowScope;
-  if (!SCOPE_IDS.includes(scope)) return;
+  // Employees may only ask for the scopes offered to them. staff.password is
+  // owner-only and has its own action, so a hand-edited form cannot raise it
+  // here and then have the owner read the code out.
+  if (!REQUESTABLE_SCOPES.some((entry) => entry.id === scope)) return;
   const reason = String(formData.get("reason") ?? "");
   const target = String(formData.get("target") ?? "").trim();
 
-  await requestWindow(user, scope, reason, target.length > 0 ? target : null);
+  const request = await requestWindow(user, scope, reason, target.length > 0 ? target : null);
+
+  // After the response, like booking alerts: the employee should not wait on
+  // an SMS gateway to be told their request was raised, and a gateway timeout
+  // must not look like a failure when the code already exists.
+  if (request.devCode) {
+    const code = request.devCode;
+    const what = scopeLabel(scope).toLowerCase();
+    after(() => notifyAccessCode(code, user.name, what));
+  }
+
   revalidatePath("/panel", "layout");
 }
 
@@ -180,12 +201,125 @@ export async function redeemCodeAction(formData: FormData) {
   const requestId = String(formData.get("requestId") ?? "");
   const code = String(formData.get("code") ?? "");
 
+  // Where a wrong code should send them back to. A password reset is raised
+  // and typed in on the team screen, and bouncing the owner to the fleet page
+  // with an error about a code he was entering elsewhere is disorienting.
+  const request = await getAccessRequest(requestId);
+  const back = request?.scope === "staff.password" ? "/panel/team" : "/panel/fleet";
+
   const result = await redeemCode(user, requestId, code);
   revalidatePath("/panel", "layout");
 
   if (!result.ok) {
-    redirect(`/panel/fleet?error=${encodeURIComponent(result.error ?? "Wrong code")}`);
+    redirect(`${back}?error=${encodeURIComponent(result.error ?? "Wrong code")}`);
   }
+  if (back === "/panel/team") {
+    redirect("/panel/team?confirmed=1");
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Resetting an employee's password                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Step one: ask for a code, which goes to the owner's own mobile.
+ *
+ * The owner does not need permission from anybody, so this is not a
+ * permission. It is a second factor on the most dangerous button in the
+ * panel: a reset hands over the ability to sign in as that employee, and
+ * anyone who finds an unlocked laptop with the panel open could otherwise
+ * press it. The code arrives on the phone in his pocket.
+ */
+export async function requestPasswordResetAction(formData: FormData) {
+  const owner = await requireOwner();
+  const staffId = String(formData.get("staffId") ?? "").trim();
+
+  const target = await getStaff(staffId);
+  if (!target || target.role === "owner") {
+    redirect(`/panel/team?error=${encodeURIComponent("That is not an employee account.")}`);
+  }
+
+  const request = await requestWindow(
+    owner,
+    "staff.password",
+    `Reset the password for ${target.name}`,
+    staffId,
+  );
+
+  if (request.devCode) {
+    const code = request.devCode;
+    after(() => notifyAccessCode(code, owner.name, `reset ${target.name}'s password`));
+  }
+
+  revalidatePath("/panel/team");
+  redirect("/panel/team?resetting=1");
+}
+
+/**
+ * Step two: with the code confirmed, issue a new password.
+ *
+ * Shown once, in the same five minute cookie the new-account flow uses, and
+ * held only as a Supabase Auth hash. The window is closed immediately
+ * afterwards so one code cannot reset two accounts.
+ */
+export async function resetStaffPasswordAction(formData: FormData) {
+  const owner = await requireOwner();
+  const staffId = String(formData.get("staffId") ?? "").trim();
+
+  const target = await getStaff(staffId);
+  if (!target || target.role === "owner") {
+    redirect(`/panel/team?error=${encodeURIComponent("That is not an employee account.")}`);
+  }
+
+  // Even the owner needs the code here. assertCanWrite would wave him
+  // through, which is right everywhere else and wrong for this.
+  let requestId: string;
+  try {
+    requestId = await assertConfirmed(owner, "staff.password", staffId);
+  } catch (error) {
+    if (error instanceof WindowRequiredError) {
+      redirect(
+        `/panel/team?error=${encodeURIComponent("Ask for a code first, then type it in to confirm the reset.")}`,
+      );
+    }
+    throw error;
+  }
+
+  const password = oneTimePassword();
+  const { error } = await admin().auth.admin.updateUserById(target.id, { password });
+  if (error) {
+    redirect(
+      `/panel/team?error=${encodeURIComponent(`Could not change the password: ${error.message}`)}`,
+    );
+  }
+
+  // One code, one reset.
+  await closeWindow(requestId, "password reset", owner.id);
+
+  const jar = await cookies();
+  jar.set(
+    NEW_STAFF_COOKIE,
+    JSON.stringify({ id: target.id, name: target.name, email: target.email, password, reset: true }),
+    {
+      httpOnly: true,
+      sameSite: "strict",
+      secure: process.env.NODE_ENV === "production",
+      path: "/panel/team",
+      maxAge: 5 * 60,
+    },
+  );
+
+  await audit(
+    owner.id,
+    "staff.password_reset",
+    "staff",
+    target.id,
+    `Reset the password for ${target.name}`,
+    requestId,
+  );
+  revalidatePath("/panel/team");
+  redirect("/panel/team");
 }
 
 export async function closeWindowAction(formData: FormData) {

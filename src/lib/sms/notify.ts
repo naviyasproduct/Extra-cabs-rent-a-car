@@ -13,6 +13,7 @@ import "server-only";
 import { insertSmsMessages, listStaff, newId } from "@/lib/panel/db";
 import type { PanelBooking, SmsKind, SmsMessage } from "@/lib/panel/types";
 import { displayMsisdn, measure, sendSms, toMsisdn } from "./textlk";
+import { CODE_TTL_MINUTES } from "@/lib/panel/window";
 
 export interface SmsRecipient {
   staffId: string;
@@ -40,6 +41,21 @@ export async function bookingRecipients(): Promise<SmsRecipient[]> {
       msisdn: toMsisdn(staff.phone ?? ""),
     }))
     .filter((r): r is SmsRecipient => r.msisdn !== null);
+}
+
+/**
+ * The owner, for anything only he should be told.
+ *
+ * Null when there is no owner, his account is off, or his number is blank or
+ * unusable. Every caller has to cope with that: a missing number must never
+ * stop an employee asking for a code, because the code is still on the
+ * owner's dashboard and the work can go on.
+ */
+export async function ownerRecipient(): Promise<SmsRecipient | null> {
+  const owner = (await listStaff()).find((staff) => staff.role === "owner" && staff.active);
+  if (!owner) return null;
+  const msisdn = toMsisdn(owner.phone ?? "");
+  return msisdn ? { staffId: owner.id, name: owner.name, msisdn } : null;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -166,6 +182,42 @@ export async function notifyNewBooking(
 }
 
 /** One message to one person, so a new number can be proved before a real booking needs it. */
+/**
+ * The access code, as the owner reads it on his phone.
+ *
+ * Built to fit one GSM-7 segment: who wants it, what for, and the code. The
+ * name and the action are clipped rather than left to run, for the same
+ * reason the booking alert clips them, and the warning at the end is there
+ * because a code read out to the wrong person is the whole risk.
+ */
+export function accessCodeSms(code: string, who: string, what: string): string {
+  return `Extra Cabs: ${code} is the code for ${clip(who, 20)} to ${clip(what, 30)}. Valid ${CODE_TTL_MINUTES} min. Give it to nobody else.`;
+}
+
+/**
+ * Text the access code to the owner.
+ *
+ * Call this from `after()`. Never awaited inside the request that creates the
+ * code: an employee asking for access should not sit watching a spinner while
+ * we talk to an SMS gateway, and a gateway timeout must not look like the
+ * request failed when the code already exists.
+ *
+ * Throws nothing. If it does not go, the code is still on the owner's
+ * dashboard, which is exactly why that fallback was kept.
+ */
+export async function notifyAccessCode(code: string, who: string, what: string): Promise<void> {
+  const owner = await ownerRecipient();
+  if (!owner) {
+    console.warn("[sms] no usable owner number, so the access code was not texted");
+    return;
+  }
+  try {
+    await deliver([owner], accessCodeSms(code, who, what), "access.code");
+  } catch (error) {
+    console.error(`[sms] access code not sent: ${(error as Error).message}`);
+  }
+}
+
 export async function sendTestSms(recipient: SmsRecipient): Promise<SmsMessage | null> {
   const body = `Extra Cabs: test message for ${clip(recipient.name, 20)}. Booking alerts will arrive on this number.`;
   const [row] = await deliver([recipient], body, "test");

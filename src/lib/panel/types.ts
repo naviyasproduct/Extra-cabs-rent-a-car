@@ -77,7 +77,13 @@ export type WindowScope =
   | "fleet.delete"
   | "fleet.photos"
   | "pricing.update"
-  | "booking.delete";
+  | "booking.delete"
+  /**
+   * Resetting an employee's password. Unlike every other scope this one
+   * applies to the OWNER too: he holds it, so a code to his phone is the
+   * second factor rather than a permission to grant.
+   */
+  | "staff.password";
 
 export type AccessStatus = "awaiting_code" | "open" | "closed" | "burned";
 
@@ -288,7 +294,7 @@ export interface VehicleRecord {
 /* Outbound SMS                                                                */
 /* -------------------------------------------------------------------------- */
 
-export type SmsKind = "booking.created" | "test";
+export type SmsKind = "booking.created" | "access.code" | "test";
 
 export type SmsStatus =
   /** Accepted by Text.lk. */

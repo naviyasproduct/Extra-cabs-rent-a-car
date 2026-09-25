@@ -44,8 +44,9 @@ current piece of work. Its full spec is in
 - **Booking alerts by SMS are built** (Text.lk), and dormant until a token and
   a sender ID are set. See [`sms.md`](./sms.md). Every website booking texts the
   owner and every staff member who has a number saved in `/panel/team`.
-- **No WhatsApp, and the access OTP is still not on SMS.** The access code
-  appears on the owner's dashboard for him to read out.
+- **The access OTP goes to the owner's mobile** (2026-09-25), and still
+  shows on his dashboard as a fallback. An employee's password can be reset
+  from `/panel/team` with a code to the same phone. **No WhatsApp.**
 - Deployed on **Vercel**. Only the public UI is live there.
 - **SEO is done** (2026-09-06). See §2a.
 
@@ -3469,6 +3470,94 @@ re-counts everything at the end rather than trusting its own deletes.
 
 The project is now in the state it should launch in: no vehicles, no
 bookings, no photographs, one owner.
+
+---
+
+### 2026-09-25 (OTP) - The access code goes to the owner's phone, and passwords can be reset
+
+Client: send the access code to the owner's mobile instead of showing it on
+his dashboard, and let an employee's password be reset with a code to the same
+phone.
+
+**The code is now texted** (`notifyAccessCode` in `src/lib/sms/notify.ts`)
+
+- One GSM-7 segment, so one unit of credit per request:
+  `Extra Cabs: 123456 is the code for Kasun Perera to add a vehicle. Valid 10
+  min. Give it to nobody else.` The name and the action are clipped, so a
+  pasted-in 120 character name cannot quietly make it two segments.
+- Sent from the **action**, after the response, exactly like booking alerts.
+  An employee asking for access must not sit watching a spinner while we talk
+  to a gateway, and a gateway timeout must not look like the request failed
+  when the code already exists.
+- **The code still shows on the owner's dashboard**, deliberately. The line
+  under it now reads "Also sent to your mobile" instead of "No SMS yet". The
+  screen is the fallback, not the channel: credit runs out, gateways fail, and
+  an owner who cannot read the code out has an employee who cannot work.
+- `ownerRecipient()` returns null when there is no owner, his account is off,
+  or his number is blank. Every caller copes: a missing number must never stop
+  an employee raising a request.
+
+**Resetting an employee's password**, on `/panel/team`
+
+This was the gap that made "staff work daily on their own" untrue: the
+one-time password is shown once and never stored, so a forgotten password
+needed the Supabase dashboard.
+
+1. The owner picks the employee and asks for a code. It goes to his own phone.
+2. He types it in. Same `redeemCode` path as every other window: five attempts,
+   ten minute expiry, single use, HMAC hashed with the pepper, all audited.
+3. A new one-time password is generated and shown **once**, in the same five
+   minute httpOnly cookie the new-account flow uses, then the window is closed
+   so one code cannot reset two accounts.
+
+> **This scope is unlike every other one, and the guard says so.** Every
+> existing scope grants an *employee* something the owner already has, and
+> `assertCanWrite` waves the owner through without a window. A password reset
+> is held by the owner and hands over the ability to sign in as somebody else,
+> so a code to his own phone is a **second factor on his own account**, not a
+> permission he is granting. `assertConfirmed()` in `guard.ts` is a separate
+> function precisely because it must NOT let the owner past.
+>
+> `REQUESTABLE_SCOPES` is what the employee's dropdown renders and what
+> `requestWindowAction` validates against, so `staff.password` cannot be
+> raised from a hand-edited fleet form and then read out.
+
+> ### Two CHECK constraints, and the second one spent a unit of credit
+>
+> `access_requests.scope` and `sms_messages.kind` are both **text columns with
+> CHECK constraints mirroring a TypeScript union**. Adding a value in code
+> alone compiles perfectly and fails at the database the moment anyone uses
+> it. Both needed a migration for this one feature.
+>
+> The scope one failed loudly on the first real request. The SMS one did not:
+> `deliver()` never throws when it cannot write its log, by design, because
+> the texts have already gone and the caller may be finishing a customer's
+> booking. So **the message was sent, a unit was spent, and the only trace was
+> a line in the server log.** It was caught solely because the test asserted
+> the row existed afterwards.
+>
+> **When adding a value to a union that maps to a column, look for a CHECK
+> constraint.** There are two in this schema and this feature needed both.
+
+**Proven against the live project, 28 checks, all passing.** One real text was
+sent on purpose: a stubbed gateway proves nothing about the thing being
+changed. It reached the owner's number, one segment, recorded as
+`access.code` with status `sent`.
+
+Also covered: the message fits one segment even with absurd inputs; employees
+are not offered the scope while the owner is; a throwaway employee signed in
+with their original password, the owner raised a request aimed at that
+employee, a wrong code was refused, the right one opened the window,
+`assertConfirmed` accepted that employee and **refused a different one**; the
+password changed, **the old one stopped working and the new one signed in**;
+and the window was closed behind it so the code could not be used twice.
+
+> **Two cleanup faults in the test, both mine, both fixed.** The run that hit
+> the scope constraint died mid-way and left a probe staff row in the live
+> project, which had to be removed by hand. And the cleanup deleted the access
+> request before the audit rows that reference it, so
+> `on delete set null` cleared the link and three rows survived. The project
+> was verified empty afterwards: every table zero except `staff` at 1.
 
 ---
 

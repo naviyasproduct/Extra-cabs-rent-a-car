@@ -2,7 +2,7 @@ import Link from "next/link";
 import { CircleAlert, CircleCheck, Eye, EyeOff, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { requireStaff, canWrite } from "@/lib/panel/guard";
 import { staffVehicles } from "@/lib/fleet";
-import { openWindowFor, pendingRequestFor, SCOPES } from "@/lib/panel/window";
+import { openWindowFor, pendingRequestFor, REQUESTABLE_SCOPES } from "@/lib/panel/window";
 import { formatPrice } from "@/lib/utils";
 import { MAX_VEHICLE_FEATURES, MAX_VEHICLE_IMAGES, MAX_VEHICLE_VIDEOS } from "@/types";
 import { RateEditor } from "@/components/panel/RateEditor";
@@ -106,7 +106,7 @@ export default async function PanelFleet({
                 className="h-11 bg-field px-3 text-sm text-ink"
                 defaultValue="fleet.update"
               >
-                {SCOPES.map((scope) => (
+                {REQUESTABLE_SCOPES.map((scope) => (
                   <option key={scope.id} value={scope.id}>
                     {scope.label}
                   </option>

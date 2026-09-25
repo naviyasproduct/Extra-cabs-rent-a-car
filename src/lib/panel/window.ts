@@ -19,24 +19,42 @@ import type { AccessRequest, StaffUser, WindowScope } from "./types";
  * save. Adding a vehicle is a dozen writes; nobody phones the owner twelve
  * times.
  *
- * NO SMS YET. The plan sends the code to the owner by Text.lk. Until that is
- * wired the code is shown on the owner's own screen in the panel and he reads
- * it out the same way. `devCode` is the only part of this that changes when
- * the gateway lands.
+ * THE CODE GOES TO THE OWNER'S MOBILE, by Text.lk, since 2026-09-25. It is
+ * still shown on his own dashboard as well, deliberately: the SMS gateway can
+ * run out of credit or fail, and an owner who cannot read the code out has an
+ * employee who cannot work. The screen is the fallback, not the channel.
+ *
+ * Sending happens in the ACTION, not here, so that a slow gateway never holds
+ * up the request that creates the code. Same reasoning as booking alerts.
  */
 
 export const CODE_TTL_MINUTES = 10;
 export const WINDOW_MINUTES = 45;
 export const MAX_ATTEMPTS = 5;
 
-export const SCOPES: { id: WindowScope; label: string; description: string }[] = [
+export const SCOPES: {
+  id: WindowScope;
+  label: string;
+  description: string;
+  /** Not offered to employees: only the owner can raise it. */
+  ownerOnly?: boolean;
+}[] = [
   { id: "fleet.create", label: "Add a vehicle", description: "Put a new vehicle on the site" },
   { id: "fleet.update", label: "Edit a vehicle", description: "Change details on an existing vehicle" },
   { id: "fleet.delete", label: "Remove a vehicle", description: "Take a vehicle off the site" },
   { id: "fleet.photos", label: "Change photos", description: "Add or remove photographs of a vehicle" },
   { id: "pricing.update", label: "Change pricing", description: "The daily rate, the long-hire rate table or the deposit" },
   { id: "booking.delete", label: "Delete a booking", description: "Remove a booking record entirely" },
+  {
+    id: "staff.password",
+    label: "Reset a password",
+    description: "Give an employee a new sign-in password",
+    ownerOnly: true,
+  },
 ];
+
+/** What an employee may ask for. The owner-only scopes are not on the list. */
+export const REQUESTABLE_SCOPES = SCOPES.filter((scope) => !scope.ownerOnly);
 
 export function scopeLabel(scope: WindowScope): string {
   return SCOPES.find((s) => s.id === scope)?.label ?? scope;
@@ -231,6 +249,27 @@ export async function expireWindows(): Promise<void> {
   for (const request of stale) {
     await closeWindow(request.id, "time ran out", request.staffId);
   }
+}
+
+/**
+ * An open window for one particular scope and target.
+ *
+ * `openWindowFor` answers "is anything open for this person", which is the
+ * right question for an employee who may hold only one at a time. This asks
+ * the precise question, which is what a confirmation needs: the owner may be
+ * holding an unrelated window, and a password reset must match the employee
+ * it was raised for.
+ */
+export async function openWindowForScope(
+  staffId: string,
+  scope: WindowScope,
+  target: string | null,
+): Promise<AccessRequest | null> {
+  await expireWindows();
+  const open = await accessRequestsWithStatus(["open"], staffId);
+  return (
+    open.find((request) => request.scope === scope && request.targetSlug === target) ?? null
+  );
 }
 
 /** The employee's currently open window, if any. */

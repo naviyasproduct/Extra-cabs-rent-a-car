@@ -17,9 +17,14 @@ import {
 } from "@/lib/panel/time";
 import { displayMsisdn, smsConfig, toMsisdn } from "@/lib/sms/textlk";
 import { DayTimeline } from "@/components/panel/DayTimeline";
+import { SubmitButton } from "@/components/panel/SubmitButton";
+import { CODE_TTL_MINUTES, openWindowForScope, pendingRequestFor } from "@/lib/panel/window";
 import {
   createStaffAction,
   dismissOneTimePasswordAction,
+  redeemCodeAction,
+  requestPasswordResetAction,
+  resetStaffPasswordAction,
   sendTestSmsAction,
   setStaffActiveAction,
   setStaffAlertsAction,
@@ -42,7 +47,7 @@ export default async function PanelTeam({
   searchParams: Promise<{ error?: string; date?: string }>;
 }) {
   const { error, date } = await searchParams;
-  await requireOwner();
+  const user = await requireOwner();
 
   const day = date ?? colomboDate();
   const [staff, summaries, shifts, recentMessages] = await Promise.all([
@@ -60,6 +65,18 @@ export default async function PanelTeam({
   // httpOnly cookie set by createStaffAction. Never from the database, where
   // the password is not kept, and never from the URL.
   const justCreated = readNewStaff((await cookies()).get(NEW_STAFF_COOKIE)?.value);
+
+  // Where the owner is in a password reset, if anywhere. Two steps: a code
+  // texted to him, then the reset itself.
+  const employees = staff.filter((person) => person.role !== "owner" && person.active);
+  const pending = await pendingRequestFor(user.id);
+  const resetPending = pending?.scope === "staff.password" ? pending : null;
+  const resetOpen = resetPending
+    ? null
+    : (await Promise.all(
+        employees.map((person) => openWindowForScope(user.id, "staff.password", person.id)),
+      )).find((request) => request !== null) ?? null;
+  const ownerCanBeTexted = toMsisdn(user.phone ?? "") !== null;
 
   // Booking alerts. Everyone is listed, the owner included: this is a
   // notification, not the timesheet, so the owner/employee split does not
@@ -127,8 +144,10 @@ export default async function PanelTeam({
           </h2>
           <p className="mt-2 text-sm text-ink-soft">
             One-time password for {justCreated.name} ({justCreated.email}). It is
-            shown once. If you close this without copying it, delete the account
-            and make another.
+            shown once.{" "}
+            {justCreated.reset
+              ? "If you close this without copying it, reset the password again."
+              : "If you close this without copying it, delete the account and make another."}
           </p>
           <p className="mt-3 font-display text-3xl font-bold tracking-[0.15em] text-ink">
             {justCreated.password}
@@ -227,6 +246,99 @@ export default async function PanelTeam({
             ))}
           </tbody>
         </table>
+      </section>
+
+      {/* Resetting a password. Two steps, because a reset hands over the
+          ability to sign in as that employee, so it is confirmed with a code
+          to the owner's own mobile rather than being one button. */}
+      <section className="bg-tile p-5">
+        <h2 className="inline-flex items-center gap-2 font-display text-sm font-bold uppercase tracking-[0.14em]">
+          <KeyRound className="size-4 text-brand-bright" aria-hidden />
+          Reset a password
+        </h2>
+
+        {resetOpen ? (
+          <>
+            <p className="mt-2 max-w-[70ch] text-sm text-muted">
+              Code confirmed. Issue the new password for{" "}
+              <strong className="text-ink">{nameFor(resetOpen.targetSlug ?? "")}</strong>. It is
+              shown once, here, and you read it out to them.
+            </p>
+            <form action={resetStaffPasswordAction} className="mt-4">
+              <input type="hidden" name="staffId" value={resetOpen.targetSlug ?? ""} />
+              <SubmitButton pendingLabel="Setting the password">
+                Set a new password
+              </SubmitButton>
+            </form>
+          </>
+        ) : resetPending ? (
+          <>
+            <p className="mt-2 max-w-[70ch] text-sm text-muted">
+              A code was sent to your mobile for{" "}
+              <strong className="text-ink">{nameFor(resetPending.targetSlug ?? "")}</strong>. Type
+              it in to confirm. It is good for {CODE_TTL_MINUTES} minutes.
+            </p>
+            <form action={redeemCodeAction} className="mt-4 flex flex-wrap items-end gap-3">
+              <input type="hidden" name="requestId" value={resetPending.id} />
+              <label className="flex flex-col gap-1">
+                <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                  The code from your phone
+                </span>
+                <input
+                  name="code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  pattern="[0-9]*"
+                  maxLength={6}
+                  required
+                  className="h-11 w-40 bg-field px-4 font-display text-lg tracking-[0.3em] text-ink"
+                />
+              </label>
+              <SubmitButton pendingLabel="Checking">Confirm</SubmitButton>
+            </form>
+          </>
+        ) : employees.length === 0 ? (
+          <p className="mt-2 text-sm text-muted">
+            No employee accounts yet. Add one above.
+          </p>
+        ) : (
+          <>
+            <p className="mt-2 max-w-[70ch] text-sm text-muted">
+              For an employee who has forgotten their password. A code goes to your
+              own mobile first, so nobody who finds this screen open can do it.
+            </p>
+            <form
+              action={requestPasswordResetAction}
+              className="mt-4 flex flex-wrap items-end gap-3"
+            >
+              <label className="flex flex-col gap-1">
+                <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                  Whose password
+                </span>
+                <select
+                  name="staffId"
+                  required
+                  className="h-11 min-w-56 bg-field px-4 text-sm text-ink"
+                >
+                  {employees.map((person) => (
+                    <option key={person.id} value={person.id}>
+                      {person.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <SubmitButton pendingLabel="Sending the code">
+                Send a code to my mobile
+              </SubmitButton>
+            </form>
+            {!ownerCanBeTexted ? (
+              <p className="mt-3 text-sm text-warning">
+                Your own mobile number is not saved below, so the code cannot be
+                texted. It will still appear on your dashboard.
+              </p>
+            ) : null}
+          </>
+        )}
       </section>
 
       {/* Who gets told about a booking */}
@@ -442,7 +554,7 @@ const NEW_STAFF_COOKIE = "ec_new_staff";
 
 function readNewStaff(
   raw: string | undefined,
-): { id: string; name: string; email: string; password: string } | null {
+): { id: string; name: string; email: string; password: string; reset: boolean } | null {
   if (!raw) return null;
   try {
     const value = JSON.parse(raw) as Record<string, unknown>;
@@ -452,6 +564,9 @@ function readNewStaff(
           name: value.name,
           email: String(value.email ?? ""),
           password: value.password,
+          // Set by resetStaffPasswordAction, so the advice below fits what
+          // just happened: a lost password on a reset is resettable again.
+          reset: value.reset === true,
         }
       : null;
   } catch {
