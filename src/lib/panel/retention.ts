@@ -7,7 +7,12 @@ import {
   updateBooking,
 } from "./db";
 import { deleteDocuments, listStoredDocuments } from "./uploads";
-import { deleteVehicleMedia, listStoredMedia } from "./vehicle-media";
+import {
+  deleteStaged,
+  deleteVehicleMedia,
+  listStoredMedia,
+  staleStagedKeys,
+} from "./vehicle-media";
 import { VEHICLE_FOLDER } from "@/lib/cloudinary";
 import { colomboDay, documentsExpired } from "./retention-rules";
 
@@ -114,11 +119,23 @@ export async function purgeOrphanMedia(now: Date = new Date()): Promise<number> 
   return deleted;
 }
 
+/**
+ * Clears the media staging bucket of anything a relay never collected.
+ *
+ * An object there is deleted the moment Cloudinary has fetched it, so
+ * everything older than a day is the residue of an abandoned upload or a
+ * relay that failed. Nothing points at it and nothing ever will.
+ */
+export async function purgeStagedMedia(): Promise<number> {
+  return deleteStaged(await staleStagedKeys(ORPHAN_AFTER_HOURS * 60 * 60 * 1000));
+}
+
 export async function runRetention(
   now: Date = new Date(),
-): Promise<{ expired: number; orphans: number; media: number }> {
+): Promise<{ expired: number; orphans: number; media: number; staged: number }> {
   const expired = await purgeExpiredDocuments(now);
   const orphans = await purgeOrphanUploads(now);
   const media = await purgeOrphanMedia(now);
-  return { expired, orphans, media };
+  const staged = await purgeStagedMedia();
+  return { expired, orphans, media, staged };
 }

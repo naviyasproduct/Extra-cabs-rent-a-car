@@ -40,10 +40,12 @@ import {
 import {
   deleteVehicleMedia,
   mediaUploadsConfigured,
-  uploadTicket,
+  relayToCloudinary,
+  stagingTicket,
   verifiedIdsFrom,
   verifyUpload,
-  type UploadTicket,
+  type StagingTicket,
+  type UploadedMedia,
 } from "@/lib/panel/vehicle-media";
 import { notifyNewBooking, sendTestSms } from "@/lib/sms/notify";
 import { toMsisdn } from "@/lib/sms/textlk";
@@ -477,16 +479,21 @@ function mediaWords(kind: MediaKind): { one: string; many: string; limit: number
 
 /**
  * Hands the browser what it needs to upload one file directly, and nothing
- * more. The ticket is signed here with the API secret, which stays here.
+ * more.
+ *
+ * The file goes to a private staging bucket in Mumbai, not to Cloudinary:
+ * uploading to Cloudinary from Sri Lanka took anywhere from 18 to 207
+ * seconds for the same 8.67MB clip, while Mumbai was 14.5 to 23 seconds
+ * every time. finishUploadAction then has Cloudinary fetch it from there.
  *
  * Gated as tightly as the change it leads to: a ticket is permission to put a
- * file in the account, so an employee without an open window gets a sentence
+ * file in our storage, so an employee without an open window gets a sentence
  * instead, exactly as they would from the form itself.
  */
 export async function uploadTicketAction(
   slug: string | null,
   kind: MediaKind,
-): Promise<UploadTicket | { error: string }> {
+): Promise<StagingTicket | { error: string }> {
   const user = await requireStaff();
   if (!MEDIA_KINDS.includes(kind)) return { error: "That is not a kind of file we take." };
   if (!mediaUploadsConfigured()) {
@@ -506,8 +513,40 @@ export async function uploadTicketAction(
     throw error;
   }
 
-  const ticket = uploadTicket(slug, kind);
-  return ticket ?? { error: "Uploads are not configured yet. Ask the developer." };
+  const ticket = await stagingTicket(kind);
+  return ticket ?? { error: "Uploads are not configured yet. Try again in a moment." };
+}
+
+/**
+ * Takes over once the file is in Mumbai: Cloudinary fetches it from there,
+ * and the staged copy is cleared away.
+ *
+ * Returns the verified Cloudinary media rather than attaching it, because the
+ * add form has no vehicle to attach it to yet. The edit screen calls
+ * attachVehicleMediaAction with what comes back; the add form carries it in a
+ * hidden field, and createVehicleAction verifies it again on the way in.
+ */
+export async function finishUploadAction(
+  slug: string | null,
+  kind: MediaKind,
+  key: string,
+): Promise<{ media: UploadedMedia } | { error: string }> {
+  const user = await requireStaff();
+  if (!MEDIA_KINDS.includes(kind)) return { error: "That is not a kind of file we take." };
+  if (slug && !(await vehicleBySlug(slug))) return { error: "That vehicle is gone." };
+
+  const scope: WindowScope = slug ? "fleet.photos" : "fleet.create";
+  try {
+    await assertCanWrite(user, scope, slug);
+  } catch (error) {
+    if (error instanceof WindowRequiredError) {
+      return { error: "You need an open window before you can add photos." };
+    }
+    throw error;
+  }
+
+  const result = await relayToCloudinary(slug, kind, key);
+  return result.ok ? { media: result.media } : { error: result.error };
 }
 
 /**

@@ -243,11 +243,15 @@ are still static.
   permission, so an employee can be trusted with pictures without being handed
   the rates. They live on Cloudinary as public ids; ID documents never go
   there.
-  - **Files upload from the browser straight to Cloudinary**, signed by
-    `lib/panel/vehicle-media.ts`, because a Vercel function refuses a request
-    body over 4.5MB and a phone photograph is routinely more than that. The
-    server signs the ticket and verifies Cloudinary's signature on the way
-    back; it never carries the bytes.
+  - **Files never pass through this server, and never go to Cloudinary from
+    the browser.** A Vercel function refuses a request body over 4.5MB, and
+    uploading to Cloudinary from Sri Lanka took anywhere from 18 to 207
+    seconds for one 8.67MB clip. So the browser PUTs to the private
+    `media-staging` bucket in Mumbai (14.5 to 23 seconds, every time) and the
+    server then has Cloudinary fetch it from there, which is four times
+    faster again. `lib/panel/vehicle-media.ts` does both halves and verifies
+    Cloudinary's signature before any id is stored.
+  - Video is capped at **50MB**, the staging bucket's own per-file limit.
   - A video costs a visitor **one lazy poster frame** until they click it: the
     `<video>` element is not on the page before that. Measured at 6.2KB.
   - Each video stores the date it was added, because Google ignores a

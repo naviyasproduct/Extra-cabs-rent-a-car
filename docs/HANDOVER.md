@@ -3334,6 +3334,99 @@ removing them loses nothing, but that is the client's data and their call.
 
 ---
 
+### 2026-09-25 (later) - Uploads go to Mumbai first, because Cloudinary is a lottery
+
+Client: the video uploading speed is too slow.
+
+It was, and the cause was not the connection. **Measured from Sri Lanka, the
+same 8.67MB clip, repeatedly:**
+
+| Destination | Times |
+| --- | --- |
+| Cloudinary, direct | 18.0s, 22.6s, 67.8s, 69.4s, 82.2s, 99.6s, **207.1s** |
+| Cloudinary's own Asia-Pacific hostname | 26.3s, no better |
+| Supabase Storage, Mumbai | 14.5s, 15.3s, 16.7s, 23.0s |
+
+The upstream here sustains about 4 Mbps to somewhere nearby, every time. The
+long route to Cloudinary gives a quarter of that **and is unpredictable**: the
+same file to the same endpoint took 22.6s and then 207.1s minutes apart.
+`api-ap.cloudinary.com` resolves into an AWS Singapore range and was tried
+against this account with a real signed upload: no faster.
+
+**So the browser no longer talks to Cloudinary at all.**
+
+1. The browser PUTs the file to a private **`media-staging`** bucket in Mumbai
+   (`stagingTicket`), with a one-off signed URL and a server-generated key.
+2. The server then hands Cloudinary a short-lived signed **read** URL and lets
+   it **fetch the object itself** (`relayToCloudinary`). Cloudinary accepts a
+   URL in place of a file, and that leg is server to server: **1.43 to 1.67
+   MB/s measured**, four times what the browser manages on the same line.
+3. The staged copy is deleted the moment Cloudinary has it.
+
+**End to end, 8.67MB: 13.0s to Mumbai plus 6.1s for Cloudinary to fetch.**
+Against a median of about 70 seconds before, and no more 200 second outliers.
+
+**What this changed elsewhere**
+
+- **The video cap is 50MB, not 100MB.** That is the staging bucket's per-file
+  limit and it is set by the Supabase plan, not chosen: asking for a 120MB
+  bucket is refused outright with "The object exceeded the maximum allowed
+  size". The uploader says 50MB now.
+- **A second content gate, for free.** The staging bucket has its own MIME
+  allowlist, so a shell script or an SVG is now refused **before it leaves the
+  building**, where previously Cloudinary refused it on arrival. Both still
+  apply.
+- `uploadTicketAction` returns a staging ticket; the new `finishUploadAction`
+  performs the relay and returns the verified Cloudinary media. **Nothing about
+  verification changed**: what comes back is still trusted only because
+  Cloudinary signed `public_id` and `version`, and the add form still carries
+  that signed triple in a hidden field for `createVehicleAction` to re-check.
+- The progress bar fills during the Mumbai upload and then the row reads
+  **Processing** while Cloudinary fetches, because at that point the browser is
+  no longer sending anything.
+- `purgeStagedMedia()` joins the daily retention run and clears anything older
+  than a day, which is the residue of an abandoned upload or a failed relay.
+  The relay deletes its own object on success, so the bucket is normally empty.
+
+> **The staged object is never readable by anyone.** The bucket is private with
+> no storage policies, the browser only ever holds a signed URL for the one
+> object it is uploading, and the signed read URL exists for the seconds
+> Cloudinary needs it and is never shown.
+
+**Proven against the live project, 71 checks, all passing**
+
+- **25** on the relay: the ticket is a Supabase URL and not a Cloudinary one
+  and carries no secret; a photograph staged and relayed, landing in the right
+  folder, verifying, delivering, and the staged copy gone; a key that is not
+  ours, a short key and a key with nothing behind it all refused; a real video
+  timed end to end with Cloudinary's fetch proven faster than the browser's
+  upload; a fresh staged file left alone by the sweep.
+- **38** on the media path as a whole, rewritten onto the new flow: the
+  signature refusals, `verifiedIdsFrom`, a shell script and an SVG **refused at
+  the staging bucket**, delivery URLs, poster against video weight (15.5KB
+  against 905.8KB), the database round trip, the `VideoObject` with its
+  `so_15p` thumbnail, and the orphan sweep leaving referenced files alone.
+- **8** on permissions, unchanged in substance: the owner gets a ticket, an
+  employee without a window gets nothing, for photos or for the add form.
+- **22** regression checks on a served build, including that the shipped
+  browser bundle contains **no Cloudinary upload endpoint at all** any more.
+- Every run cleaned up with a retrying cleanup and a check that the staging
+  bucket was empty afterwards.
+
+> **Two checks failed on the first sweep and both were the test's fault**, not
+> the code's: they asked for `/fleet/toyota-c-hr`, which the client had
+> removed in the panel while this work was going on. Re-run against the live
+> slug, both pass. Worth remembering that these tests read the live database,
+> so a URL typed into one goes stale the moment staff change something.
+
+**Noticed in passing, and it matters for search.** Removing a vehicle is a
+soft delete and **the removed row keeps its slug**, so re-adding the same car
+produced `toyota-c-hr-4`. The clean URL is better for the location pages this
+site is being built around, and the fix is to restore the original from Show
+removed rather than to add a fresh one.
+
+---
+
 ## 9. Working agreements
 
 - **This file is auto-loaded.** `CLAUDE.md` references it, so it enters context

@@ -1,5 +1,7 @@
 import "server-only";
 import crypto from "node:crypto";
+import { admin } from "@/lib/supabase/admin";
+import { MEDIA_STAGING_BUCKET } from "@/lib/supabase/env";
 import {
   PENDING_FOLDER,
   VEHICLE_FOLDER,
@@ -43,11 +45,12 @@ const API = "https://api.cloudinary.com/v1_1";
 export const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
 
 /**
- * 100MB. Long enough for a minute of phone video at high quality, which is
- * more than a walkaround of a car needs. Cloudinary re-encodes on delivery,
- * so a big original costs storage once and is never served as filmed.
+ * 50MB, which is the staging bucket's per-file limit and therefore the real
+ * ceiling, not a number chosen here. It is about a minute of phone video,
+ * more than a walkaround of a car needs, and Cloudinary re-encodes on
+ * delivery so a big original is never served as filmed.
  */
-export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+export const MAX_VIDEO_BYTES = 50 * 1024 * 1024;
 
 /**
  * What Cloudinary itself will accept for each kind, sent as `allowed_formats`
@@ -130,7 +133,7 @@ export interface UploadTicket {
  * lasting grant: it is scoped to one folder and one set of formats, and the
  * action that issues it has already checked the staff member's write window.
  */
-export function uploadTicket(slug: string | null, kind: MediaKind): UploadTicket | null {
+function cloudinaryTicket(slug: string | null, kind: MediaKind): UploadTicket | null {
   const settings = config();
   if (!settings) return null;
 
@@ -311,6 +314,175 @@ export async function listStoredMedia(prefix: string, kind: MediaKind): Promise<
     console.error(`[media] listing error: ${(error as Error).message}`);
     return [];
   }
+}
+
+
+/* -------------------------------------------------------------------------- */
+/* Staging: the browser uploads to Mumbai, Cloudinary fetches from there       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Where the browser actually sends the file.
+ *
+ * Not Cloudinary. Measured from Sri Lanka on 2026-09-25, the same 8.67MB clip
+ * took 18s to 207s to reach Cloudinary and 14.5s to 23.0s to reach this
+ * bucket in Mumbai. The long route is not just slower, it is a lottery, and
+ * Cloudinary's own Asia-Pacific hostname was no better.
+ *
+ * The key is generated HERE, never taken from the caller, so an upload cannot
+ * be aimed at an object somebody else staged.
+ */
+export interface StagingTicket {
+  /** A one-off signed URL. The browser PUTs the bytes to it. */
+  url: string;
+  /** Handed back to the server afterwards to identify what was staged. */
+  key: string;
+  maxBytes: number;
+  accept: string;
+}
+
+const KEY_PATTERN = /^[0-9a-f]{32}$/;
+
+export async function stagingTicket(kind: MediaKind): Promise<StagingTicket | null> {
+  const key = crypto.randomBytes(16).toString("hex");
+  const { data, error } = await admin()
+    .storage.from(MEDIA_STAGING_BUCKET)
+    .createSignedUploadUrl(key);
+
+  if (error || !data) {
+    console.error(`[media] could not sign a staging upload: ${error?.message}`);
+    return null;
+  }
+  return { url: data.signedUrl, key, maxBytes: MAX_BYTES[kind], accept: ACCEPT[kind] };
+}
+
+export type RelayResult =
+  | { ok: true; media: UploadedMedia }
+  | { ok: false; error: string };
+
+/**
+ * Hands a staged object to Cloudinary and clears it away.
+ *
+ * Cloudinary accepts a URL in place of a file and fetches it itself, which
+ * turns the slow half of the journey into a server to server transfer: 1.67
+ * MB/s measured, four times what the browser manages on the same connection.
+ *
+ * The signed read URL is short lived and is never shown to anyone: it exists
+ * for the seconds Cloudinary needs it.
+ */
+export async function relayToCloudinary(
+  slug: string | null,
+  kind: MediaKind,
+  key: string,
+): Promise<RelayResult> {
+  if (!KEY_PATTERN.test(key)) return { ok: false, error: "That upload did not go through. Try again." };
+
+  const ticket = cloudinaryTicket(slug, kind);
+  if (!ticket) return { ok: false, error: "Uploads are not configured yet. Ask the developer." };
+
+  const store = admin().storage.from(MEDIA_STAGING_BUCKET);
+  const { data: readable, error: readError } = await store.createSignedUrl(key, 600);
+  if (readError || !readable) {
+    return { ok: false, error: "That upload did not arrive. Try again." };
+  }
+
+  const body = new FormData();
+  body.set("file", readable.signedUrl);
+  body.set("api_key", ticket.apiKey);
+  body.set("signature", ticket.signature);
+  for (const [name, value] of Object.entries(ticket.params)) body.set(name, value);
+
+  try {
+    const response = await fetch(ticket.endpoint, {
+      method: "POST",
+      body,
+      // Cloudinary is downloading the file and, for video, transcoding the
+      // delivery copy. Generous, because failing at four minutes and asking
+      // someone to upload it all again is the worst outcome here.
+      signal: AbortSignal.timeout(300_000),
+    });
+    const raw = await response.text();
+    let payload: {
+      public_id?: string;
+      version?: number;
+      signature?: string;
+      error?: { message?: string };
+    } = {};
+    try {
+      payload = JSON.parse(raw) as typeof payload;
+    } catch {
+      return { ok: false, error: `Cloudinary replied with HTTP ${response.status}.` };
+    }
+
+    if (!response.ok || !payload.public_id || !payload.version || !payload.signature) {
+      const detail = payload.error?.message ?? raw.slice(0, 200);
+      console.error(`[media] relay failed for ${key}: ${detail}`);
+      if (response.status === 401 || response.status === 403) {
+        return {
+          ok: false,
+          error: "Cloudinary refused the account key. It needs upload permission. Ask the developer.",
+        };
+      }
+      return { ok: false, error: "That upload did not go through. Try again." };
+    }
+
+    const media: UploadedMedia = {
+      publicId: payload.public_id,
+      version: String(payload.version),
+      signature: payload.signature,
+    };
+    // The same check as before: what comes back is only trusted because
+    // Cloudinary signed it. The relay does not change that.
+    if (!verifyUpload(media)) {
+      return { ok: false, error: "That upload could not be verified. Try again." };
+    }
+
+    // Cloudinary has it, so the staged copy is dead weight. A failure here is
+    // logged rather than raised: the upload worked, and the daily sweep will
+    // clear the object.
+    const { error: removeError } = await store.remove([key]);
+    if (removeError) {
+      console.error(`[media] staged ${key} not removed: ${removeError.message}`);
+    }
+
+    return { ok: true, media };
+  } catch (error) {
+    console.error(`[media] relay error for ${key}: ${(error as Error).message}`);
+    return { ok: false, error: "That upload did not go through. Try again." };
+  }
+}
+
+/**
+ * Staged objects older than `olderThanMs`, for the daily sweep.
+ *
+ * Anything still here is the residue of an upload that was abandoned or of a
+ * relay that failed. Nothing points at it and nothing ever will.
+ */
+export async function staleStagedKeys(olderThanMs: number): Promise<string[]> {
+  const cutoff = Date.now() - olderThanMs;
+  const { data, error } = await admin()
+    .storage.from(MEDIA_STAGING_BUCKET)
+    .list("", { limit: 1000, sortBy: { column: "created_at", order: "asc" } });
+
+  if (error) {
+    console.error(`[media] listing the staging bucket failed: ${error.message}`);
+    return [];
+  }
+  return (data ?? [])
+    .filter((object) => KEY_PATTERN.test(object.name))
+    .filter((object) => object.created_at && Date.parse(object.created_at) < cutoff)
+    .map((object) => object.name);
+}
+
+export async function deleteStaged(keys: string[]): Promise<number> {
+  const safe = keys.filter((key) => KEY_PATTERN.test(key));
+  if (safe.length === 0) return 0;
+  const { error } = await admin().storage.from(MEDIA_STAGING_BUCKET).remove(safe);
+  if (error) {
+    console.error(`[media] clearing staged objects failed: ${error.message}`);
+    return 0;
+  }
+  return safe.length;
 }
 
 /** Exported for tests: the signature rule is the whole security of this. */

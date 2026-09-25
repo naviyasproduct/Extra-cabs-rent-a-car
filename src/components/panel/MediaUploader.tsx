@@ -4,7 +4,11 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, Upload, X } from "lucide-react";
 import { cloudinaryPosterUrl, cloudinaryUrl, type MediaKind } from "@/lib/cloudinary";
-import { attachVehicleMediaAction, uploadTicketAction } from "@/app/panel/actions";
+import {
+  attachVehicleMediaAction,
+  finishUploadAction,
+  uploadTicketAction,
+} from "@/app/panel/actions";
 
 /**
  * Picks files and sends them **straight to Cloudinary**, never through this
@@ -35,6 +39,8 @@ interface Job {
   id: number;
   name: string;
   percent: number;
+  /** "processing" is the relay: uploaded, now being fetched by Cloudinary. */
+  stage?: "uploading" | "processing";
   error?: string;
 }
 
@@ -69,66 +75,44 @@ export function MediaUploader({
   }
 
   /**
-   * One file, one request, with real progress.
+   * Puts one file in the staging bucket, with real progress.
    *
-   * XMLHttpRequest rather than fetch: a 60MB video over a Sri Lankan mobile
+   * XMLHttpRequest rather than fetch: a 40MB video over a Sri Lankan mobile
    * connection takes long enough that a spinner with no number reads as
    * broken, and fetch cannot report upload progress.
+   *
+   * A plain PUT of the bytes to the signed URL. The server then has
+   * Cloudinary fetch the object; the browser never talks to Cloudinary,
+   * because that leg is the slow and unreliable one.
    */
-  function send(file: File, ticket: Awaited<ReturnType<typeof uploadTicketAction>>, jobId: number) {
-    return new Promise<Uploaded | null>((resolve) => {
-      if (!ticket || "error" in ticket) {
-        update(jobId, { error: ticket?.error ?? "Uploads are not configured." });
-        resolve(null);
-        return;
-      }
-
-      const body = new FormData();
-      body.set("file", file);
-      body.set("api_key", ticket.apiKey);
-      body.set("signature", ticket.signature);
-      // Exactly the parameters that were signed, nothing added or left out.
-      for (const [key, value] of Object.entries(ticket.params)) {
-        body.set(key, value);
-      }
-
+  function stage(file: File, url: string, jobId: number) {
+    return new Promise<boolean>((resolve) => {
       const request = new XMLHttpRequest();
-      request.open("POST", ticket.endpoint);
+      request.open("PUT", url);
+      request.setRequestHeader("content-type", file.type || "application/octet-stream");
       request.upload.addEventListener("progress", (event) => {
         if (event.lengthComputable) {
           update(jobId, { percent: Math.round((event.loaded / event.total) * 100) });
         }
       });
       request.addEventListener("load", () => {
-        let payload: {
-          public_id?: string;
-          version?: number;
-          signature?: string;
-          error?: { message?: string };
-        } = {};
-        try {
-          payload = JSON.parse(request.responseText) as typeof payload;
-        } catch {
-          update(jobId, { error: `Cloudinary replied with HTTP ${request.status}.` });
-          resolve(null);
+        if (request.status >= 200 && request.status < 300) {
+          resolve(true);
           return;
         }
-        if (!payload.public_id || !payload.version || !payload.signature) {
-          update(jobId, { error: payload.error?.message ?? "That upload did not go through." });
-          resolve(null);
-          return;
-        }
-        resolve({
-          publicId: payload.public_id,
-          version: String(payload.version),
-          signature: payload.signature,
+        update(jobId, {
+          error:
+            request.status === 413
+              ? `That ${noun} is too large.`
+              : "That upload did not go through. Try again.",
         });
+        resolve(false);
       });
       request.addEventListener("error", () => {
         update(jobId, { error: "The connection dropped. Try again." });
-        resolve(null);
+        resolve(false);
       });
-      request.send(body);
+      request.send(file);
     });
   }
 
@@ -155,8 +139,18 @@ export function MediaUploader({
         continue;
       }
 
-      const uploaded = await send(file, ticket, jobId);
-      if (!uploaded) continue;
+      if (!(await stage(file, ticket.url, jobId))) continue;
+
+      // In Mumbai now. The wait from here is Cloudinary pulling it over a
+      // backbone link, which is several times faster than this browser could
+      // push it, so the bar sits at 100% and the label changes instead.
+      update(jobId, { percent: 100, stage: "processing" });
+      const finished = await finishUploadAction(slug, kind, ticket.key);
+      if ("error" in finished) {
+        update(jobId, { error: finished.error });
+        continue;
+      }
+      const uploaded = finished.media;
 
       if (mode === "collect") {
         setCollected((all) => [...all, uploaded]);
@@ -224,7 +218,11 @@ export function MediaUploader({
               <div className="flex items-center justify-between gap-3">
                 <span className="truncate text-ink-soft">{job.name}</span>
                 <span className={job.error ? "text-brand-bright" : "text-muted"}>
-                  {job.error ? "Failed" : `${job.percent}%`}
+                  {job.error
+                    ? "Failed"
+                    : job.stage === "processing"
+                      ? "Processing"
+                      : `${job.percent}%`}
                 </span>
               </div>
               {job.error ? (
@@ -269,7 +267,7 @@ export function MediaUploader({
 
       <p className="mt-2 text-xs text-muted">
         {kind === "video"
-          ? "MP4 or MOV, up to 100MB. Keep it under a minute: a slow walk around the car, then the inside."
+          ? "MP4 or MOV, up to 50MB. Keep it under a minute: a slow walk around the car, then the inside. A long clip takes a while to upload."
           : "JPG, PNG or HEIC, up to 10MB each. You can pick several at once."}
       </p>
     </div>

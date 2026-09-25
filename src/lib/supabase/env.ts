@@ -35,3 +35,13 @@ export function supabaseServiceRoleKey(): string {
 
 /** The private bucket for customer identity photos. */
 export const ID_DOCUMENTS_BUCKET = "id-documents";
+
+/**
+ * Where vehicle photographs and video land on their way to Cloudinary.
+ *
+ * Private, and transient: an object lives here only until Cloudinary has
+ * fetched it. It exists because uploading straight to Cloudinary from Sri
+ * Lanka is slow and wildly inconsistent, while this bucket is in Mumbai.
+ * See the migration for the measurements.
+ */
+export const MEDIA_STAGING_BUCKET = "media-staging";
