@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CircleAlert, Eye, EyeOff, Plus, RotateCcw, Trash2 } from "lucide-react";
+import { CircleAlert, CircleCheck, Eye, EyeOff, Plus, RotateCcw, Trash2 } from "lucide-react";
 import { requireStaff, canWrite } from "@/lib/panel/guard";
 import { staffVehicles } from "@/lib/fleet";
 import { openWindowFor, pendingRequestFor, SCOPES } from "@/lib/panel/window";
@@ -7,6 +7,7 @@ import { formatPrice } from "@/lib/utils";
 import { MAX_VEHICLE_FEATURES, MAX_VEHICLE_IMAGES, MAX_VEHICLE_VIDEOS } from "@/types";
 import { RateEditor } from "@/components/panel/RateEditor";
 import { MediaUploader } from "@/components/panel/MediaUploader";
+import { SubmitButton } from "@/components/panel/SubmitButton";
 import { mediaUploadsConfigured } from "@/lib/panel/vehicle-media";
 import {
   createVehicleAction,
@@ -21,9 +22,9 @@ export const metadata = { title: "Fleet" };
 export default async function PanelFleet({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; show?: string }>;
+  searchParams: Promise<{ error?: string; show?: string; added?: string }>;
 }) {
-  const { error, show } = await searchParams;
+  const { error, show, added } = await searchParams;
   const user = await requireStaff();
   const showDeleted = show === "deleted";
   const photosConfigured = mediaUploadsConfigured();
@@ -64,6 +65,23 @@ export default async function PanelFleet({
         <p role="alert" className="flex items-center gap-2 bg-brand-tint px-4 py-3 text-sm font-medium text-brand-bright">
           <CircleAlert className="size-4 shrink-0" aria-hidden />
           {error}
+        </p>
+      ) : null}
+
+      {/* Adding a vehicle returns here, to an empty form with the list below
+          it, rather than to the vehicle's own page. Landing on the edit screen
+          read as "the form did not clear", because the edit screen is the same
+          fields carrying the values just saved. */}
+      {added ? (
+        <p className="flex flex-wrap items-center gap-2 bg-field px-4 py-3 text-sm font-medium text-ink">
+          <CircleCheck className="size-4 shrink-0 text-brand-bright" aria-hidden />
+          Added to the fleet. It is in the list below and on the website now.
+          <Link
+            href={`/panel/fleet/${added}`}
+            className="font-semibold text-brand-bright underline underline-offset-4"
+          >
+            Open it
+          </Link>
         </p>
       ) : null}
 
@@ -257,12 +275,9 @@ export default async function PanelFleet({
             </Group>
 
             <div>
-              <button
-                type="submit"
-                className="rounded-full bg-brand px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-hover"
-              >
+              <SubmitButton pendingLabel="Adding the vehicle">
                 Add to the fleet
-              </button>
+              </SubmitButton>
             </div>
           </form>
         </section>

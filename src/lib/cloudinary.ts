@@ -84,16 +84,17 @@ export type MediaKind = "image" | "video";
  * element is given `preload="none"` and this poster, so a visitor who never
  * presses play downloads one small JPEG instead of tens of megabytes.
  *
- * `so_0` takes the frame at zero seconds. Cloudinary can pick a frame itself
- * with `so_auto`, which is not on every plan, and a first frame chosen by the
- * person who filmed the car is a reasonable one.
+ * The frame is taken 15% into the clip, not at zero. The very first frame of
+ * a phone video is often the lens still settling, or black if the clip fades
+ * in, and a black poster makes the whole gallery look dark. A moment in, the
+ * camera is moving along the car and the frame is worth showing.
  */
 export function cloudinaryPosterUrl(publicId: string, options: DeliveryOptions = {}): string {
   const cloud = cloudName();
   if (!cloud) return "";
 
   const transforms = [
-    "so_0",
+    "so_15p",
     "f_auto",
     options.quality ? `q_${options.quality}` : "q_auto",
     ...(options.width ? [`w_${Math.round(options.width)}`, "c_limit"] : []),
@@ -113,15 +114,27 @@ export function cloudinaryPosterUrl(publicId: string, options: DeliveryOptions =
  * use plays H.264 MP4, and a second format would double what Cloudinary has
  * to store and transform for no visitor who could not already watch it.
  */
-export function cloudinaryVideoUrl(publicId: string, options: DeliveryOptions = {}): string {
-  const cloud = cloudName();
-  if (!cloud) return "";
-
-  const transforms = [
+export function videoTransform(options: DeliveryOptions = {}): string {
+  return [
     "vc_auto",
     options.quality ? `q_${options.quality}` : "q_auto",
     ...(options.width ? [`w_${Math.round(options.width)}`, "c_limit"] : []),
   ].join(",");
+}
 
-  return `https://res.cloudinary.com/${cloud}/video/upload/${transforms}/${publicId}.mp4`;
+/**
+ * The width every video is delivered at, and the one transcoded ahead of time
+ * when it is uploaded.
+ *
+ * These two must be the same string. Cloudinary keys a derived video on its
+ * transformation, so asking for one that was never pre-generated means the
+ * first person to press play waits for a transcode. That is why the eager
+ * transformation is built from this function rather than typed out again.
+ */
+export const VIDEO_DELIVERY_WIDTH = 1280;
+
+export function cloudinaryVideoUrl(publicId: string, options: DeliveryOptions = {}): string {
+  const cloud = cloudName();
+  if (!cloud) return "";
+  return `https://res.cloudinary.com/${cloud}/video/upload/${videoTransform(options)}/${publicId}.mp4`;
 }

@@ -67,7 +67,10 @@ export function Hero() {
     props: { srcSet: desktop },
   } = getImageProps({
     ...common,
-    src: "/images/home/home-new-vehicles-lineup.png",
+    // WebP, 2026-09-25: 877KB of PNG became 135KB with the transparency and
+    // the dimensions unchanged, so the derived object-position below still
+    // holds. A NEW filename, never an overwrite: the optimiser caches by URL.
+    src: "/images/home/home-new-vehicles-lineup-v2.webp",
     width: 1774,
     height: 887,
   });
@@ -76,7 +79,7 @@ export function Hero() {
     props: { srcSet: mobile, ...img },
   } = getImageProps({
     ...common,
-    src: "/images/home/home-new-vehicles-lineup-mobile.png",
+    src: "/images/home/home-new-vehicles-lineup-mobile-v2.webp",
     width: 2000,
     height: 2000,
   });

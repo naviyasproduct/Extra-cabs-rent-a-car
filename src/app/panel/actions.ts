@@ -20,6 +20,7 @@ import {
   insertVehicle,
   newId,
   nextBookingReference,
+  recentlyCreatedVehicle,
   updateBooking,
   updateEnquiry,
   updateStaff,
@@ -333,6 +334,9 @@ export async function updateVehicleAction(formData: FormData) {
   redirect(`/panel/fleet/${slug}?saved=1`);
 }
 
+/** How long after an add an identical one counts as the same button press. */
+const DOUBLE_SUBMIT_MS = 30_000;
+
 export async function createVehicleAction(formData: FormData) {
   const user = await requireStaff();
   const requestId = await gate(
@@ -342,6 +346,20 @@ export async function createVehicleAction(formData: FormData) {
   const name = plainText(formData.get("name"), 80);
   if (name.length === 0) {
     redirect(`/panel/fleet?error=${encodeURIComponent("A vehicle needs a name.")}`);
+  }
+
+  // A second press of a button that had not visibly done anything created
+  // three identical vehicles in four seconds on the first real use of this
+  // form. The button now disables itself, which handles almost every case;
+  // this is the backstop for the rest, because a duplicate vehicle is
+  // published to the public website immediately.
+  //
+  // Same name, same person, within the window: treated as the same press.
+  // A genuine pair of identical cars is normal in a rental fleet, so the
+  // window is short and the answer says what happened rather than refusing.
+  const recent = await recentlyCreatedVehicle(user.id, name, DOUBLE_SUBMIT_MS);
+  if (recent) {
+    redirect(`/panel/fleet?added=${encodeURIComponent(recent)}&repeat=1`);
   }
 
   const slugBase =
@@ -402,7 +420,10 @@ export async function createVehicleAction(formData: FormData) {
   );
   refreshPublicFleet();
   revalidatePath("/panel/fleet");
-  redirect(`/panel/fleet/${slug}?saved=1`);
+  // Back to the list with an empty form, not to the new vehicle's edit page.
+  // The edit page is the same fields holding what was just typed, which reads
+  // as a form that refused to clear.
+  redirect(`/panel/fleet?added=${encodeURIComponent(slug)}`);
 }
 
 export async function deleteVehicleAction(formData: FormData) {

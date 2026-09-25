@@ -7,7 +7,6 @@ import { MAX_VEHICLE_IMAGES, MAX_VEHICLE_VIDEOS } from "@/types";
 import type { CarVideo } from "@/types/car";
 import { cloudinaryPosterUrl, cloudinaryVideoUrl } from "@/lib/cloudinary";
 import { Badge } from "@/components/ui/Badge";
-import { cn } from "@/lib/utils";
 
 /**
  * Vehicle gallery. One large plate plus a thumbnail rail beneath it, both
@@ -109,10 +108,12 @@ export function CarGallery({
                   : `Show view ${index + 1} of ${name}`
               }
               aria-current={active === index}
-              className={cn(
-                "relative aspect-[4/3] overflow-hidden rounded-(--radius-inner) bg-surface-alt transition-opacity duration-200",
-                active === index ? "opacity-100" : "opacity-55 hover:opacity-85",
-              )}
+              // Client instruction, 2026-09-25: thumbnails show at full
+              // colour. They used to be dimmed to 55% unless selected, which
+              // made a rail of photographs of a car look like a rail of dark
+              // rectangles. The red bar along the bottom of the active one is
+              // the only thing marking the selection now.
+              className="relative aspect-[4/3] overflow-hidden rounded-(--radius-inner) bg-surface-alt"
             >
               {slide.kind === "video" ? (
                 <>
@@ -125,8 +126,11 @@ export function CarGallery({
                     loading="lazy"
                     className="h-full w-full object-cover"
                   />
+                  {/* No scrim over the poster, for the same reason: the
+                      badge is brand red on white and reads perfectly well
+                      without darkening the picture behind it. */}
                   <span
-                    className="absolute inset-0 flex items-center justify-center bg-contrast/40"
+                    className="absolute inset-0 flex items-center justify-center"
                     aria-hidden
                   >
                     <span className="flex size-10 items-center justify-center rounded-full bg-brand text-white">

@@ -86,10 +86,11 @@ export function MediaUploader({
       const body = new FormData();
       body.set("file", file);
       body.set("api_key", ticket.apiKey);
-      body.set("timestamp", ticket.timestamp);
-      body.set("folder", ticket.folder);
-      body.set("allowed_formats", ticket.allowedFormats);
       body.set("signature", ticket.signature);
+      // Exactly the parameters that were signed, nothing added or left out.
+      for (const [key, value] of Object.entries(ticket.params)) {
+        body.set(key, value);
+      }
 
       const request = new XMLHttpRequest();
       request.open("POST", ticket.endpoint);

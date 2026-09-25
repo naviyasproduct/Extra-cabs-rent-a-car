@@ -3206,6 +3206,134 @@ must be copied from Vercel's own Domains tab rather than from memory.
 
 ---
 
+### 2026-09-25 - Three vehicles from one button press, and the image weights
+
+Client, after adding the first real vehicle: the home page shows three of it,
+the add form did not clear, it lands on the vehicle instead of the list, the
+gallery thumbnails are dark, and images take too long to load.
+
+**The first three are one bug.** The live rows say so exactly:
+
+```
+toyota-c-hr     created 03:32:05.905
+toyota-c-hr-2   created 03:32:08.094
+toyota-c-hr-3   created 03:32:09.150
+```
+
+Three identical vehicles, the same five photo ids, **four seconds apart**.
+Adding a vehicle takes a second or two and nothing on screen said so, so the
+button was pressed again, and again. Each press published another car to the
+website.
+
+**Three defences, because one is not enough**
+
+- `src/components/panel/SubmitButton.tsx`, a client component using
+  `useFormStatus`, disables itself and reads "Adding the vehicle" while the
+  form is in flight. It has to be its own component: the hook reports on a form
+  **above** it in the tree, so inside the page it would always read false.
+- **The add form now returns to the list**, `/panel/fleet?added=<slug>`, with a
+  confirmation line and a link to the new vehicle. It used to redirect to the
+  vehicle's own edit page, which is the same fields carrying the values just
+  typed. That is what "the fields did not clear" was: a different screen that
+  looks identical, and the list the client expected underneath was on the page
+  they had just left.
+- A **server-side backstop**: `recentlyCreatedVehicle()` in `db.ts`. The same
+  name, by the same person, within 30 seconds is treated as the same press and
+  redirects to the one already created instead of making another. Deliberately
+  narrow: two identical cars in a rental fleet is ordinary, so this catches a
+  double click and nothing else.
+
+> **Only the button disable would have been enough in a browser**, but the
+> action is reachable without one, and a duplicate here is published to the
+> public website immediately. That is why there is a check on the server too.
+
+**The gallery is no longer dark** (client instruction)
+
+- Thumbnails were `opacity-55` unless selected, which turned a rail of
+  photographs into a rail of dark rectangles. They are full colour now; the red
+  bar under the active one is the only selection marker.
+- The video thumbnail had a `bg-contrast/40` scrim behind its play badge. Gone.
+  The badge is brand red and reads perfectly well on a photograph.
+- **The poster frame moved from `so_0` to `so_15p`.** The first frame of a
+  phone video is often the lens still settling, or black if the clip fades in,
+  and that alone can make the whole gallery look dark. 15% in, the camera is
+  moving along the car.
+
+**Images, measured on the client's own photographs**
+
+| | before | after |
+| --- | --- | --- |
+| Phone tile (112px thumbnail) | 43.1KB | **7.5KB** |
+| Desktop tile (300px) | 37.2KB | **29.7KB** |
+| Hero, desktop source | 877KB PNG | **135KB WebP** |
+| Hero, phone source | 428KB PNG | **121KB WebP** |
+
+- **`CarCard` shipped no `sizes` at all**, so it fell back to a default that
+  assumes a third of the viewport. The card is two shapes: a **112px
+  thumbnail** on a phone and a quarter of the shell on a desktop, so a phone
+  was downloading a 828px image to paint 112 pixels of it. Each grid now passes
+  its own `sizes`, because they have different column counts. The srcset the
+  browser now sees starts at **256w**.
+- **Uploads cap what is stored at 2000px** (`w_2000,c_limit` as an incoming
+  transformation). Every width the site asks for is derived from whatever is
+  stored, and deriving a 300px tile from a 4000px phone photograph is slow the
+  first time each size is requested.
+- The hero PNGs became WebP at the **same dimensions and with transparency
+  intact**, so the derived `object-position` crops in `Hero.tsx` still hold.
+  New filenames (`-v2.webp`), never an overwrite, per the caching trap in the
+  2026-09-11 entry. The PNGs are left on disk: they are the client's own
+  uploads. `seo.ts` points at the WebP too.
+- **Video is transcoded when it is uploaded**, not when the first customer
+  presses play: the ticket asks for `eager` at exactly the delivery transform
+  with `eager_async=true`. The two strings are built by the same function
+  (`videoTransform`), because Cloudinary keys a derived video on its
+  transformation and a near miss silently means no pre-generation.
+
+> ### A negative result worth keeping: eager transformations do not help images
+>
+> The same trick was tried for photographs and **measured, not assumed**:
+> upload with `eager=f_auto,q_auto,w_640,c_limit`, then time the first
+> delivery. **1152ms with eager against 1139ms without**, and the eager result
+> came back as `"format":"png"`, because `f_auto` is resolved per request from
+> the Accept header and cannot be generated ahead of time. Do not add it.
+>
+> The same probe showed what the second-or-so actually is: a repeat request
+> for a warm URL was 132ms. It is distance and cold CDN edges, not transform
+> time, and it is not something the site controls.
+
+**Not changed, and worth knowing.** Every public page is dynamic (`ƒ` in the
+build output) because `connection()` in the fleet readers opts them out of
+prerendering. So each request waits on a Supabase round trip before any HTML
+is sent, and the browser only then discovers the images. From a laptop in Sri
+Lanka to Mumbai that is noticeable; on Vercel the function and the database
+are both in `bom1`. Caching the vehicle list behind a tag would remove it,
+but that touches the exact mechanism the 2026-09-07 caching entry records as
+painful, so it is flagged rather than done.
+
+**Proven**
+
+- **50 checks** on the media path against the real Cloudinary account, now
+  including the new signed parameters: the stored cap, the eager video
+  transform, and that the eager string is the one the page asks for.
+- **5 checks** on the duplicate guard against the three real duplicate rows: a
+  same-name add by the same person inside the window is found, outside it is
+  not, a different name is not a duplicate, and the same name by someone else
+  is not either.
+- **23 regression checks** on a served build: every public page, the real
+  vehicle page, no `opacity-55`, no scrim, `so_15p` present, still no
+  `<video>` before the click, the hero resolving to the WebP, and the tiles
+  asking for 112px on phones.
+- The pending button was confirmed in the shipped client chunks by its own
+  code (`cursor-not-allowed`, `aria-disabled`); its label is a prop from the
+  server component, so it appears in the flight payload rather than in a
+  static chunk.
+
+**Still to do:** the two duplicate vehicles are still in the database and on
+the website. They are identical to the first and share its photographs, so
+removing them loses nothing, but that is the client's data and their call.
+
+---
+
 ## 9. Working agreements
 
 - **This file is auto-loaded.** `CLAUDE.md` references it, so it enters context

@@ -267,7 +267,14 @@ export function FleetBrowser({
         {results.length > 0 ? (
           <div className="mt-6 grid gap-(--gap) md:grid-cols-2 xl:grid-cols-3">
             {results.map((car, index) => (
-              <CarCard key={car.id} car={car} eager={index === 0} />
+              <CarCard
+                key={car.id}
+                car={car}
+                eager={index === 0}
+                // Two up from md, three up from xl, inside the 9 of 12
+                // columns left over beside the filter sidebar.
+                sizes="(max-width: 767px) 112px, (max-width: 1023px) 46vw, (max-width: 1279px) 37vw, 300px"
+              />
             ))}
           </div>
         ) : (

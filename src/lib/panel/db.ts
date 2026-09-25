@@ -312,6 +312,32 @@ export async function vehicleSlugExists(slug: string): Promise<boolean> {
   return (count ?? 0) > 0;
 }
 
+/**
+ * The slug of a vehicle this person added with this exact name in the last
+ * `withinMs`, if there is one.
+ *
+ * Only for catching a repeated button press. Two identical cars in a fleet is
+ * ordinary, so this deliberately looks at a few seconds rather than at
+ * whether the name is already taken.
+ */
+export async function recentlyCreatedVehicle(
+  staffId: string,
+  name: string,
+  withinMs: number,
+): Promise<string | null> {
+  const since = new Date(Date.now() - withinMs).toISOString();
+  const { data, error } = await admin()
+    .from("vehicles")
+    .select("slug, created_at")
+    .eq("created_by", staffId)
+    .eq("name", name)
+    .gte("created_at", since)
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (error) fail("recentlyCreatedVehicle", error);
+  return data?.[0]?.slug ?? null;
+}
+
 export async function insertVehicle(vehicle: Omit<VehicleRecord, "createdAt">): Promise<void> {
   const { error } = await admin().from("vehicles").insert(toSnake(vehicle));
   if (error) fail("insertVehicle", error);

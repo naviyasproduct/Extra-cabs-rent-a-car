@@ -1,6 +1,12 @@
 import "server-only";
 import crypto from "node:crypto";
-import { PENDING_FOLDER, VEHICLE_FOLDER, type MediaKind } from "@/lib/cloudinary";
+import {
+  PENDING_FOLDER,
+  VEHICLE_FOLDER,
+  VIDEO_DELIVERY_WIDTH,
+  videoTransform,
+  type MediaKind,
+} from "@/lib/cloudinary";
 
 /**
  * Vehicle photographs and walkaround videos, on Cloudinary.
@@ -101,11 +107,16 @@ export function folderFor(slug: string | null): string {
 export interface UploadTicket {
   endpoint: string;
   apiKey: string;
-  timestamp: string;
   signature: string;
-  folder: string;
-  /** Echoed back by the browser exactly, or the signature does not match. */
-  allowedFormats: string;
+  /**
+   * Every signed parameter, to be sent back exactly as given.
+   *
+   * A flat bag rather than named fields on purpose: the signature covers
+   * precisely these keys and values, so a browser that forgets one, or a
+   * parameter added here and not there, fails as a refused upload rather than
+   * as a silently unsigned one.
+   */
+  params: Record<string, string>;
   /** Mirrored to the browser so the picker can refuse a bad file early. */
   maxBytes: number;
   accept: string;
@@ -123,17 +134,34 @@ export function uploadTicket(slug: string | null, kind: MediaKind): UploadTicket
   const settings = config();
   if (!settings) return null;
 
-  const timestamp = String(Math.floor(Date.now() / 1000));
-  const folder = folderFor(slug);
-  const allowed = FORMATS[kind].join(",");
+  const params: Record<string, string> = {
+    allowed_formats: FORMATS[kind].join(","),
+    folder: folderFor(slug),
+    timestamp: String(Math.floor(Date.now() / 1000)),
+  };
+
+  if (kind === "image") {
+    // An incoming transformation, so what is STORED is already sensible.
+    //
+    // A phone photograph of a car is 4000px and several megabytes, and every
+    // width the site asks for is generated from whatever is stored. Deriving
+    // a 300px tile from a 4000px original is slow the first time each size is
+    // requested, which is exactly when a customer is looking at a new
+    // vehicle. 2000px is well above the largest size the site ever draws.
+    params.transformation = "w_2000,c_limit";
+  } else {
+    // Transcode the file the site will actually play, now, in the background,
+    // instead of when the first customer presses play. `eager_async` keeps
+    // the upload itself quick for whoever is adding the vehicle.
+    params.eager = `${videoTransform({ width: VIDEO_DELIVERY_WIDTH })}/mp4`;
+    params.eager_async = "true";
+  }
 
   return {
     endpoint: `${API}/${settings.cloud}/${kind}/upload`,
     apiKey: settings.key,
-    timestamp,
-    folder,
-    allowedFormats: allowed,
-    signature: sign({ allowed_formats: allowed, folder, timestamp }, settings.secret),
+    params,
+    signature: sign(params, settings.secret),
     maxBytes: MAX_BYTES[kind],
     accept: ACCEPT[kind],
   };

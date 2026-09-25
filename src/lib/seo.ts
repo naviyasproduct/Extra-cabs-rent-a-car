@@ -61,7 +61,7 @@ export function organisationLd(locations: Location[] = []) {
     // The current hero. Kept in step with Hero.tsx on purpose: this is the
     // picture search results and link previews show for the business, and a
     // JSON-LD pointing at a retired file is a broken card waiting to happen.
-    image: absoluteUrl("/images/home/home-new-vehicles-lineup.png"),
+    image: absoluteUrl("/images/home/home-new-vehicles-lineup-v2.webp"),
     telephone: site.phone,
     email: site.email,
     // Founded 1 January 2019, per the client.

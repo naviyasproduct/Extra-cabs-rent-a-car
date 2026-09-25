@@ -30,6 +30,9 @@ const fuelLabels: Record<Car["specs"]["fuel"], string> = {
  * title link. There is no separate "view details" control: a tile is obviously
  * clickable, and one link per card means the vehicle name is its anchor text.
  */
+/** Two columns on a tablet, a quarter of the shell on a desktop. */
+const DEFAULT_SIZES = "(max-width: 767px) 112px, (max-width: 1023px) 46vw, (max-width: 1279px) 24vw, 300px";
+
 export function CarCard({
   car,
   className,
@@ -44,10 +47,22 @@ export function CarCard({
    * amount of urgency without pinning the choice.
    */
   eager = false,
+  sizes = DEFAULT_SIZES,
 }: {
   car: Car;
   className?: string;
   eager?: boolean;
+  /**
+   * What the tile actually measures, so the browser can pick a file that size.
+   *
+   * It matters more here than anywhere else on the site, because this card is
+   * two different shapes: a 112px thumbnail on a phone and a quarter of the
+   * shell on a desktop. With no `sizes` at all the default assumed a third of
+   * the viewport everywhere, so a phone downloaded a 640px image to paint 112
+   * pixels of it. Each grid passes its own, since they have different column
+   * counts.
+   */
+  sizes?: string;
 }) {
   const stats = [
     {
@@ -88,6 +103,7 @@ export function CarCard({
           alt={`${car.name}, ${car.year} model`}
           label={car.name}
           eager={eager}
+          sizes={sizes}
           className="transition-transform duration-500 group-hover:scale-[1.03]"
         />
       </div>
