@@ -3427,6 +3427,51 @@ removed rather than to add a fresh one.
 
 ---
 
+### 2026-09-25 (clean) - The project emptied after testing
+
+The developer tested the fleet, the add form, a booking and an enquiry, then
+asked for the database to be cleared. Confirmed by question first, because
+this is live data and none of it comes back.
+
+**Kept:** Shanaka's `staff` row and his Supabase Auth login, so the panel is
+still reachable with the password he already has.
+
+**Removed**, in that order, children before parents:
+
+| | |
+| --- | --- |
+| Cloudinary | 11 photographs, 2 videos |
+| `enquiries` / `enquiry_messages` | 1 each |
+| `audit` | 11 |
+| `sms_messages` | 2 |
+| `vehicles` | 4, including the three soft-deleted duplicates |
+| private storage | already empty by the time the wipe ran |
+
+> **The booking and its four identity photos vanished between the inventory
+> and the wipe.** The inventory taken twenty minutes earlier showed one
+> booking and four objects in `id-documents`; both were already gone when the
+> script ran, and the audit count had risen by one. The developer was deleting
+> test records in the panel at the same time, and deleting a booking takes its
+> photos with it (the leak fixed on 2026-09-21). The end state is the one that
+> was asked for, but it was not this script that got there first.
+
+**Booking references restart at EC-0001**, migration
+`20260925010000_reset_reference_after_testing.sql`. The sequence is not a
+table, so emptying `bookings` left it counting and the first real customer
+would have been EC-0002. **Deliberately not verified afterwards**: the only
+way to read the sequence is to take a number from it, which would spend
+EC-0001. Same reasoning as the 2026-09-24 reset.
+
+**Verified after the wipe:** every table zero except `staff` at 1, both
+buckets empty, no Cloudinary assets under the vehicle folder, one auth login.
+The script fails loudly rather than reporting success over an error, and it
+re-counts everything at the end rather than trusting its own deletes.
+
+The project is now in the state it should launch in: no vehicles, no
+bookings, no photographs, one owner.
+
+---
+
 ## 9. Working agreements
 
 - **This file is auto-loaded.** `CLAUDE.md` references it, so it enters context
