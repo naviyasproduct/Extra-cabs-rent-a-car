@@ -3561,6 +3561,129 @@ and the window was closed behind it so the code could not be used twice.
 
 ---
 
+### 2026-09-28 - Tap the card at the desk to start and end a shift
+
+Client: give the two employees a card to tap instead of signing in and out by
+hand. Then, better than what was proposed to him: **glue the card to the
+desk**, have them tap their own phone on it, open a real page they can see and
+press, and **ask before signing anybody out** so a stray tap cannot end a
+shift.
+
+**The design is his, and it is the right one**
+
+| | |
+| --- | --- |
+| The card proves | the **place**. It is stuck to the desk and never leaves. |
+| The phone proves | the **person**. It carries their own signed-in session. |
+
+So there is **one card, not one per employee**, and `tap_cards` has no
+`staff_id`. A card taken home cannot exist, and a phone on its own clocks
+nobody in. That is exactly the pair of facts a timesheet is supposed to
+evidence.
+
+**A plain URL on the tag, not Web NFC.** Every iPhone from the XS and every
+Android opens a URL tag with no app installed. Web NFC, where the page itself
+reads the tag, is Chromium on Android only, about 6% of browsers, and Safari
+does not implement it, so it would have excluded iPhones entirely. Checked
+against Chrome's own capability docs and Apple's background tag reading notes
+rather than remembered.
+
+**What an employee sees**
+
+1. Tap. A banner drops down, the page opens.
+2. **First time on that phone only:** "Sign in once", which returns them
+   straight back to the card afterwards.
+3. Not started: their name and one button, **Start my shift**.
+4. Already started: the time they signed in and how long they have been on,
+   then **End my shift**.
+5. That button is a **link, not a form**: it only asks the question. Nothing
+   changes until "Yes, end my shift" is pressed on the next screen, with "No,
+   keep working" beside it.
+
+Starting has no confirmation on purpose. An accidental start is visible and
+harmless; an accidental end silently stops the clock for the rest of the day,
+which is the client's own point.
+
+**Worth knowing: signing in already opens a shift** (`/999p7k` has done that
+since the panel was built). So the first sign-in of the day starts the shift
+whether it came from the card or not, and `openShift` is safe to call twice:
+an employee who already has an open shift keeps the one they have. That is
+checked in the tests rather than assumed.
+
+**A redirect parameter, allowlisted to one shape.** The sign-in page now takes
+`?next=`, so the first tap on a new phone does not dead end on the panel.
+Taking a redirect target from the request is how open redirects happen, so
+`safeNext()` accepts **only** `/tap/` followed by 32 hex characters and
+nothing else. The regex was read back out of the written file and exercised
+against an off-site URL, because this is the fourth session in which an escape
+written through a script landed wrong.
+
+> ### What this does not stop, said plainly
+>
+> The URL is visible in the address bar once the page opens, so an employee
+> who notes it down can open the same page from home. They still need their
+> own signed-in session, so this is **an employee cheating deliberately, not a
+> stranger getting in**, and the proven-presence heartbeat already shows the
+> owner a claimed shift with no presence behind it.
+>
+> Closing it completely needs a tag that signs every tap (NTAG 424 DNA, a
+> fresh counter and CMAC per tap). That is a hardware change, not a code one,
+> and it can be dropped in later without touching this design: the card would
+> simply carry a URL that changes.
+
+**Built**
+
+- Migration `20260928000000_tap_cards.sql`, pushed. RLS on, no policies,
+  grants revoked, same as every other table. **No other migration was needed:**
+  `manual_signout` is already in the `end_reason` constraint and `shift` is
+  already in `audit.entity`. Both were checked before writing code, after the
+  previous session lost a unit of SMS credit to exactly that class of mistake.
+- `src/lib/panel/tap.ts`: create, look up, revoke, and the URL to write onto
+  the tag. The token pattern is checked **before** the database is touched, so
+  a junk path never becomes a query.
+- `/tap/[token]`, a server component with no client JavaScript except the
+  pending submit button. It works on a phone with a bad connection because
+  there is nothing to hydrate.
+- `tapStartShiftAction` and `tapEndShiftAction` **re-resolve the token from
+  the database** rather than trusting the posted form. The page already
+  checked it; the page is a courtesy and the action is the control.
+- `/panel/team` gains a section to create the card, read the URL to write onto
+  the tag, see when it was last tapped, and turn it off. Turning it off
+  answers "card turned off" rather than "not found", so staff tapping a dead
+  tag are told why.
+- `robots.ts` disallows `/tap/`, and the page carries `noindex` metadata.
+
+**A revoked card is not a missing card.** `lookupTapCard` returns three
+states, not two. Answering "not found" to a card the owner turned off would
+leave two employees standing at a desk tapping a tag that looks broken.
+
+**Proven against the live project, 37 checks, all passing**
+
+- **25 on the data and the rule:** a 32 hex token, active, with no staff id;
+  junk, a traversal and an unused-but-well-formed token all unknown; a
+  turned-off card reporting revoked and coming back on; a throwaway employee
+  with no shift, then one open on today's Colombo date, **a second tap not
+  starting a second shift**, the page finding the open one, and no current
+  shift after ending; the owner refused a shift by `isTimeTracked` and by
+  `openShift` returning null.
+- **12 over HTTP on a served build:** junk and unknown tokens 404, the real
+  card 200, **a stranger offered only "Sign in once" and no shift buttons**,
+  `confirm=end` leaking nothing without a session, the return path present on
+  the sign-in link, `noindex` on the page, `Disallow: /tap/` in robots.txt,
+  **an off-site `next` refused**, and `/panel` still bouncing a stranger.
+- Cleanup retried and verified: `tap_cards` back to 0, `staff` back to 1, no
+  shifts, no audit rows.
+
+**The hardware, for the client**
+
+An NTAG213 sticker or card, which is what any shop sells for phones. Write the
+URL with an NFC writing app on an Android phone (NFC Tools is the usual one),
+choose a URL record, paste, write, and lock the tag if the app offers. The
+instructions are on `/panel/team` beside the address, so nobody has to come
+back to this file for them.
+
+---
+
 ## 9. Working agreements
 
 - **This file is auto-loaded.** `CLAUDE.md` references it, so it enters context

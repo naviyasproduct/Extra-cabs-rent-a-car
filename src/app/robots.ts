@@ -11,11 +11,12 @@ export default function robots(): MetadataRoute.Robots {
     rules: {
       userAgent: "*",
       allow: "/",
-      // /999p7k is the staff sign-in. Keeping it out of search results is
+      // /999p7k is the staff sign-in and /tap/ is the card at the desk.
+      // Keeping them out of search results is
       // tidiness, not security: the protection is Supabase Auth plus the
       // active staff row checked on every request. The page also carries
       // noindex metadata, which is the instruction a crawler actually obeys.
-      disallow: ["/panel", "/panel/", "/999p7k", "/api/"],
+      disallow: ["/panel", "/panel/", "/999p7k", "/tap/", "/api/"],
     },
     sitemap: absoluteUrl("/sitemap.xml"),
     host: absoluteUrl("/"),

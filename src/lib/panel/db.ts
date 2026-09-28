@@ -10,6 +10,7 @@ import type {
   PresenceSegment,
   SmsMessage,
   StaffUser,
+  TapCard,
   VehicleRecord,
   WorkShift,
 } from "./types";
@@ -82,6 +83,50 @@ export async function listStaff(): Promise<StaffUser[]> {
   const { data, error } = await admin().from("staff").select("*").order("created_at");
   if (error) fail("listStaff", error);
   return (data ?? []).map((r) => toCamel<StaffUser>(r));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Tap cards                                                                   */
+/* -------------------------------------------------------------------------- */
+
+export async function listTapCards(): Promise<TapCard[]> {
+  const { data, error } = await admin()
+    .from("tap_cards")
+    .select("*")
+    .order("created_at", { ascending: false });
+  if (error) fail("listTapCards", error);
+  return (data ?? []).map((r) => toCamel<TapCard>(r));
+}
+
+/**
+ * The card behind a token, whatever its state.
+ *
+ * Returns a revoked card too, on purpose: the route wants to tell the
+ * difference between a tag nobody recognises and a tag that has been turned
+ * off, and answering "not found" to both would leave staff tapping a dead
+ * card with no idea why.
+ */
+export async function tapCardByToken(token: string): Promise<TapCard | null> {
+  const { data, error } = await admin()
+    .from("tap_cards")
+    .select("*")
+    .eq("token", token)
+    .maybeSingle();
+  if (error) fail("tapCardByToken", error);
+  return data ? toCamel<TapCard>(data) : null;
+}
+
+export async function insertTapCard(card: Omit<TapCard, "createdAt">): Promise<void> {
+  const { error } = await admin().from("tap_cards").insert(toSnake(card));
+  if (error) fail("insertTapCard", error);
+}
+
+export async function updateTapCard(
+  id: string,
+  patch: Partial<Omit<TapCard, "id" | "createdAt" | "createdBy">>,
+): Promise<void> {
+  const { error } = await admin().from("tap_cards").update(toSnake(patch)).eq("id", id);
+  if (error) fail("updateTapCard", error);
 }
 
 export async function insertStaff(staff: Omit<StaffUser, "createdAt">): Promise<void> {

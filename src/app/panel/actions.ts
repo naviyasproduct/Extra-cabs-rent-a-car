@@ -33,7 +33,7 @@ import {
   updateVehicle,
   vehicleSlugExists,
 } from "@/lib/panel/db";
-import { closeShift, openShift, markAway } from "@/lib/panel/time";
+import { closeShift, currentShift, openShift, markAway } from "@/lib/panel/time";
 import {
   closeWindow,
   redeemCode,
@@ -42,6 +42,7 @@ import {
   scopeLabel,
 } from "@/lib/panel/window";
 import { publicCarBySlug, vehicleBySlug } from "@/lib/fleet";
+import { createTapCard, listCards, lookupTapCard, setCardActive } from "@/lib/panel/tap";
 import type { MediaKind } from "@/lib/cloudinary";
 import {
   confirmDocument,
@@ -815,6 +816,98 @@ export async function makePhotoPrimaryAction(formData: FormData) {
 
   refreshPublicFleet();
   revalidatePath(back);
+}
+
+/* -------------------------------------------------------------------------- */
+/* The tap card at the desk                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Both actions re-resolve the token from the database rather than trusting
+ * the form. The page already checked it, but the page is a courtesy and this
+ * is the control: a posted token for a revoked or invented card must not
+ * start anybody's shift.
+ */
+async function tappedCard(token: string) {
+  const lookup = await lookupTapCard(token);
+  return lookup.state === "ok" ? lookup.card : null;
+}
+
+export async function tapStartShiftAction(formData: FormData) {
+  const user = await requireStaff();
+  const token = String(formData.get("token") ?? "");
+  const card = await tappedCard(token);
+  if (!card) redirect("/panel");
+
+  // openShift refuses the owner on its own and returns null, so this call
+  // site does not test the role. It is also safe to call twice: an employee
+  // who already has an open shift keeps the one they have.
+  const shift = await openShift(user);
+  if (shift) {
+    await audit(
+      user.id,
+      "shift.tapped_in",
+      "shift",
+      shift.id,
+      `Started a shift by tapping ${card.label || "the card"}`,
+    );
+  }
+
+  revalidatePath("/panel", "layout");
+  redirect(`/tap/${card.token}?done=in`);
+}
+
+export async function tapEndShiftAction(formData: FormData) {
+  const user = await requireStaff();
+  const token = String(formData.get("token") ?? "");
+  const card = await tappedCard(token);
+  if (!card) redirect("/panel");
+
+  // Read the shift before closing it, so the audit line can name the one that
+  // ended rather than looking for it afterwards and finding none.
+  const shift = await currentShift(user);
+  await closeShift(user, "manual_signout");
+  if (shift) {
+    await audit(
+      user.id,
+      "shift.tapped_out",
+      "shift",
+      shift.id,
+      `Ended a shift by tapping ${card.label || "the card"}`,
+    );
+  }
+
+  revalidatePath("/panel", "layout");
+  redirect(`/tap/${card.token}?done=out`);
+}
+
+/** The owner issues and retires cards from /panel/team. */
+export async function createTapCardAction(formData: FormData) {
+  const owner = await requireOwner();
+  const label = plainText(formData.get("label"), 60) || "Front desk";
+  const card = await createTapCard(owner, label);
+  await audit(owner.id, "tap.card_created", "staff", card.id, `Created the tap card "${card.label}"`);
+  revalidatePath("/panel/team");
+  redirect("/panel/team");
+}
+
+export async function setTapCardActiveAction(formData: FormData) {
+  const owner = await requireOwner();
+  const id = String(formData.get("id") ?? "");
+  const active = String(formData.get("active") ?? "") === "true";
+
+  const card = (await listCards()).find((entry) => entry.id === id);
+  if (!card) return;
+
+  await setCardActive(id, active);
+  await audit(
+    owner.id,
+    active ? "tap.card_enabled" : "tap.card_revoked",
+    "staff",
+    id,
+    `${active ? "Turned on" : "Turned off"} the tap card "${card.label}"`,
+  );
+  revalidatePath("/panel/team");
 }
 
 /* -------------------------------------------------------------------------- */

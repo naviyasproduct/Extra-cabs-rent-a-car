@@ -296,6 +296,25 @@ export interface VehicleRecord {
 
 export type SmsKind = "booking.created" | "access.code" | "test";
 
+/**
+ * An NFC card fixed at the office.
+ *
+ * Deliberately has no `staffId`. The card is glued to the desk, so it says
+ * WHERE the tap happened; who tapped it comes from the signed-in session on
+ * the phone that opened the page. One card serves every employee.
+ */
+export interface TapCard {
+  id: string;
+  /** 32 hex characters, the path segment written onto the tag. */
+  token: string;
+  label: string;
+  active: boolean;
+  createdAt: string;
+  createdBy: string | null;
+  /** When anyone last opened the page from this card. */
+  lastTapAt: string | null;
+}
+
 export type SmsStatus =
   /** Accepted by Text.lk. */
   | "sent"

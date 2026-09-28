@@ -123,6 +123,13 @@ Signing in starts the shift. A heartbeat every 20 seconds records presence; the
 server writes its own clock, never the browser's, so stopping the beats can
 only ever record less time, never more.
 
+**Or they tap the card at the desk** (2026-09-28). An NFC tag glued to the
+office desk opens `/tap/<token>` on the employee's own phone: one button to
+start, and a confirmation before ending so a stray tap cannot stop the clock.
+**The card proves the place and the phone proves the person**, so there is one
+card for everybody and it carries no name. The owner creates it, reads the URL
+to write onto the tag, and can turn it off from `/panel/team`.
+
 A segment with no beat for 90 seconds is closed **at its last heartbeat**, not
 at the moment it was noticed. That is what keeps the number honest.
 

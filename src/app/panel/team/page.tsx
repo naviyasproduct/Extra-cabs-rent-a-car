@@ -1,4 +1,4 @@
-import { CircleAlert, KeyRound, MessageSquare, UserPlus } from "lucide-react";
+import { CircleAlert, KeyRound, MessageSquare, Nfc, UserPlus } from "lucide-react";
 import { requireOwner } from "@/lib/panel/guard";
 import { cookies } from "next/headers";
 import {
@@ -19,7 +19,10 @@ import { displayMsisdn, smsConfig, toMsisdn } from "@/lib/sms/textlk";
 import { DayTimeline } from "@/components/panel/DayTimeline";
 import { SubmitButton } from "@/components/panel/SubmitButton";
 import { CODE_TTL_MINUTES, openWindowForScope, pendingRequestFor } from "@/lib/panel/window";
+import { listCards, tapUrl } from "@/lib/panel/tap";
 import {
+  createTapCardAction,
+  setTapCardActiveAction,
   createStaffAction,
   dismissOneTimePasswordAction,
   redeemCodeAction,
@@ -77,6 +80,8 @@ export default async function PanelTeam({
         employees.map((person) => openWindowForScope(user.id, "staff.password", person.id)),
       )).find((request) => request !== null) ?? null;
   const ownerCanBeTexted = toMsisdn(user.phone ?? "") !== null;
+
+  const cards = await listCards();
 
   // Booking alerts. Everyone is listed, the owner included: this is a
   // notification, not the timesheet, so the owner/employee split does not
@@ -339,6 +344,93 @@ export default async function PanelTeam({
             ) : null}
           </>
         )}
+      </section>
+
+      {/* The card at the desk. It carries no identity: whoever taps it is
+          identified by the session on their own phone. */}
+      <section className="bg-tile p-5">
+        <h2 className="inline-flex items-center gap-2 font-display text-sm font-bold uppercase tracking-[0.14em]">
+          <Nfc className="size-4 text-brand-bright" aria-hidden />
+          Tap card at the desk
+        </h2>
+        <p className="mt-2 max-w-[70ch] text-sm text-muted">
+          Stick the card to the desk. An employee taps their own phone on it to
+          start and end their shift, and ending always asks first. The card
+          holds no name: it says where the tap happened, and their phone says
+          who they are, so it only works for somebody already signed in.
+        </p>
+
+        {cards.length === 0 ? (
+          <form action={createTapCardAction} className="mt-5 flex flex-wrap items-end gap-3">
+            <label className="flex flex-col gap-1">
+              <span className="text-xs uppercase tracking-[0.12em] text-muted">
+                What to call it
+              </span>
+              <input
+                name="label"
+                defaultValue="Front desk"
+                maxLength={60}
+                className="h-11 min-w-56 bg-field px-4 text-sm text-ink"
+              />
+            </label>
+            <SubmitButton pendingLabel="Creating">Create a card</SubmitButton>
+          </form>
+        ) : (
+          <ul className="mt-5 flex flex-col gap-4">
+            {cards.map((card) => (
+              <li key={card.id} className="bg-field p-4">
+                <div className="flex flex-wrap items-baseline justify-between gap-2">
+                  <span className="font-display text-base font-bold uppercase">
+                    {card.label}
+                  </span>
+                  <span className="text-xs text-muted">
+                    {card.active ? "In use" : "Turned off"}
+                    {card.lastTapAt
+                      ? `, last tapped ${colomboDateTime(card.lastTapAt)}`
+                      : ", never tapped"}
+                  </span>
+                </div>
+
+                <p className="mt-3 text-xs uppercase tracking-[0.12em] text-muted">
+                  Write this onto the tag
+                </p>
+                {/* Selectable and wrapping: it gets copied into an NFC writing
+                    app on a phone, so it has to survive being read off a small
+                    screen. */}
+                <p className="mt-1 break-all font-mono text-sm text-ink">{tapUrl(card.token)}</p>
+
+                <form action={setTapCardActiveAction} className="mt-4">
+                  <input type="hidden" name="id" value={card.id} />
+                  <input type="hidden" name="active" value={card.active ? "false" : "true"} />
+                  <button
+                    type="submit"
+                    className="rounded-full bg-field-hover px-3.5 py-2 text-xs font-semibold transition-colors hover:bg-brand hover:text-white"
+                  >
+                    {card.active ? "Turn this card off" : "Turn it back on"}
+                  </button>
+                </form>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        <div className="mt-5 text-sm text-muted">
+          <p className="font-semibold text-ink-soft">Writing the tag</p>
+          <ol className="mt-2 flex list-decimal flex-col gap-1 pl-5">
+            <li>Buy an NTAG213 sticker or card. Any NFC tag sold for phones works.</li>
+            <li>
+              Install an NFC writing app on an Android phone (NFC Tools is the
+              usual one) and choose to write a URL record.
+            </li>
+            <li>Paste the address above, write it, then lock the tag if the app offers to.</li>
+            <li>Stick it where both of them can reach it, and test one tap.</li>
+          </ol>
+          <p className="mt-3">
+            iPhones from the XS read it with no app at all: a banner drops down
+            and opens the page. Android is the same. Nobody has to install
+            anything to use it, only to write it once.
+          </p>
+        </div>
       </section>
 
       {/* Who gets told about a booking */}

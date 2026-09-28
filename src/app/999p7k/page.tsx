@@ -19,16 +19,30 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+/**
+ * Where to go after signing in.
+ *
+ * Only the tap page, and only with a well formed token. Taking a redirect
+ * target from the request is how open redirects happen, so this is an
+ * allowlist of one shape rather than a check that it "looks internal".
+ */
+function safeNext(value: unknown): string | null {
+  const next = String(value ?? "");
+  return /^\/tap\/[0-9a-f]{32}$/.test(next) ? next : null;
+}
+
 async function signIn(formData: FormData) {
   "use server";
 
   const email = String(formData.get("email") ?? "");
   const password = String(formData.get("password") ?? "");
+  const next = safeNext(formData.get("next"));
 
   // Sets the Supabase session cookies on success.
   const result = await signInWithSupabase(email, password);
   if (!result.ok || !result.user) {
-    redirect(`/999p7k?error=${encodeURIComponent(result.error ?? "Sign in failed")}`);
+    const back = next ? `&next=${encodeURIComponent(next)}` : "";
+    redirect(`/999p7k?error=${encodeURIComponent(result.error ?? "Sign in failed")}${back}`);
   }
 
   // Signing in IS the start of the shift. The plan wants one deliberate act,
@@ -39,17 +53,20 @@ async function signIn(formData: FormData) {
   // rule, in one place, covering every entry point.
   await openShift(result.user);
 
-  redirect("/panel");
+  // Back to the card they tapped, so the first sign-in on a phone does not
+  // dead end on the panel with no sign of what they were doing.
+  redirect(next ?? "/panel");
 }
 
 export default async function StaffSignInPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, next } = await searchParams;
+  const returnTo = safeNext(next);
 
-  if (await getCurrentUser()) redirect("/panel");
+  if (await getCurrentUser()) redirect(returnTo ?? "/panel");
 
   return (
     <div className="flex min-h-dvh items-center justify-center px-(--gutter) py-24">
@@ -80,6 +97,7 @@ export default async function StaffSignInPage({
         ) : null}
 
         <form action={signIn} className="mt-6 flex flex-col gap-4">
+          {returnTo ? <input type="hidden" name="next" value={returnTo} /> : null}
           <Field label="Email" htmlFor="email">
             <Input
               id="email"
