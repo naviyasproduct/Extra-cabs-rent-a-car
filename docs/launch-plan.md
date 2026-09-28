@@ -387,36 +387,91 @@ Say this out loud early, because it manages the only expectation that matters:
 
 ### 3c. Connecting extracabs.lk from domains.lk
 
-The `.lk` registry (LK Domain Registry, `domains.lk` / `nic.lk`) gives you a DNS
-management panel. Two ways to connect, and the choice is real:
+Written out as steps on 2026-09-28, at the client's request, because this is
+done once and away from the code.
 
-**Option A, keep DNS at the registry and add records.** Recommended. You keep
-control of MX records for email, and nothing else that uses the domain breaks.
-Add an `A` record for the apex and a `CNAME` for `www`.
+> **Never type a DNS value from memory, mine or anyone's.** Vercel's apex IP
+> has changed historically, and the `www` target is now **per project**: the
+> dashboard shows something like `d1d4fc829fe7bc7c.vercel-dns-017.com`, not a
+> shared hostname. Copy both out of the project's own Domains tab at the
+> moment you are adding them.
 
-**Option B, delegate nameservers to Vercel.** Simpler, Vercel manages
-everything, but it moves *all* DNS including any email records. Only do this if
-nothing else uses the domain.
+**On Vercel first**
 
-> **Do not use a DNS target value from memory, mine or anyone's.** Vercel has
-> changed its apex IP historically, and a stale value produces a domain that
-> half works and is painful to diagnose. Add the domain in the Vercel project
-> first, open its Domains tab, and copy the **exact** `A` and `CNAME` values
-> Vercel shows you at that moment. They are on screen for this reason.
+1. Open the project on Vercel, then **Settings**, then **Domains** in the
+   sidebar.
+2. Type `extracabs.lk` into Add Domain and confirm. Vercel will offer to add
+   `www.extracabs.lk` at the same time: accept, so both names are claimed.
+3. Choose which one serves the site and which redirects. **Pick the apex,
+   `extracabs.lk`, as the primary** so it matches `NEXT_PUBLIC_SITE_URL`, every
+   canonical the site emits, and the address on the Google Business Profile.
+4. Leave that tab open. It is now showing the exact records to copy, and they
+   are specific to this project.
 
-Then:
+**Then at domains.lk**
 
-- **Set the redirect direction** in Vercel so `www` and apex do not both serve.
-  One canonical host, per 2e.
-- **SSL is automatic** via Let's Encrypt once DNS resolves. If it does not issue
-  within an hour, check for a `CAA` record on the domain blocking Let's Encrypt.
-  Some registrars add one.
-- **`.lk` propagation is often slower than `.com`.** Allow up to 24 hours before
-  assuming something is wrong. Verify with `nslookup extracabs.lk` rather than
-  by loading the site in a browser that may have cached.
-- **Once the domain is live**, update the Google Business Profile's website
-  field to the exact canonical URL, and re-submit the sitemap in Search Console
-  under the new domain property.
+5. Sign in at domains.lk and open the DNS management (sometimes "DNS Zone" or
+   "Manage DNS") for extracabs.lk.
+6. Delete any parking or placeholder records pointing the apex or `www`
+   anywhere else. A leftover A, AAAA or CNAME on the same name is the single
+   most common reason the domain then reads as misconfigured.
+7. Add an **A record** for the apex: name `@` (some panels want it blank, or
+   the domain itself), value the IP address Vercel is showing you.
+8. Add a **CNAME record** for `www`: name `www`, value the hostname Vercel is
+   showing for it, including the trailing dot if the panel expects one.
+9. If the panel offers a TTL, set the lowest it allows, such as 300 seconds,
+   so a mistake can be corrected in minutes rather than a day.
+10. Save. **Do not change the nameservers** as well: records and nameserver
+    delegation are two alternative routes, and doing both leaves the domain
+    answering from whichever the registry prefers.
+
+> **Nothing here touches email.** The business inbox is
+> `extracabsinfo@gmail.com`, on Google's own domain, so extracabs.lk carries no
+> MX records to break. If a mailbox on the domain is ever set up, add its MX
+> records here and leave them alone afterwards.
+
+**Then wait, and check rather than assume**
+
+11. Give it time. `.lk` is slower to propagate than `.com`, and up to 24 hours
+    is normal, occasionally longer.
+12. Check with `nslookup extracabs.lk` and `nslookup www.extracabs.lk` from a
+    terminal, not by loading the site in a browser that may have cached the
+    old answer.
+13. Refresh the Vercel Domains tab until both names read **Valid
+    Configuration**. Vercel issues the SSL certificate automatically once DNS
+    resolves.
+14. If the certificate has not issued within about an hour of DNS being
+    correct, look for a `CAA` record on the domain. Some registrars add one
+    that only permits their own certificate authority, which silently blocks
+    Let's Encrypt.
+
+**Then the application side**
+
+15. Confirm `NEXT_PUBLIC_SITE_URL` in the Vercel project is exactly
+    `https://extracabs.lk`, with no trailing slash and no `www`.
+16. **Redeploy.** `NEXT_PUBLIC_` variables are compiled into the build, so a
+    change to that value does nothing until the site is built again.
+17. Load `https://extracabs.lk/robots.txt` and `https://extracabs.lk/sitemap.xml`
+    and confirm both print the real domain rather than the vercel.app address.
+18. Open one vehicle page and view source: the canonical link and the JSON-LD
+    URLs should all read extracabs.lk.
+19. Sign in at `https://extracabs.lk/999p7k` and click through the panel once,
+    so the session cookies are proven on the real host.
+20. **Now write the NFC tag.** The address the panel shows is built from
+    `NEXT_PUBLIC_SITE_URL`, so it has always been the extracabs.lk one; it
+    simply did not resolve until this point.
+
+**Then the search work, which is the point of the domain**
+
+21. Add extracabs.lk in Google Search Console. Choose the **Domain** property
+    and add the TXT record it gives you at domains.lk, which also covers
+    every subdomain.
+22. Submit `https://extracabs.lk/sitemap.xml` in Search Console, then leave it
+    alone: indexing takes days, and resubmitting does not hurry it.
+23. Update the website field on the Google Business Profile to
+    `https://extracabs.lk`, matching the primary exactly.
+24. Check the site on a phone on mobile data, not office wifi, because that is
+    how nearly every customer will arrive.
 
 ---
 
