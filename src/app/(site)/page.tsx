@@ -4,7 +4,6 @@ import { BrowseByType } from "@/components/home/BrowseByType";
 import { ServicesGrid } from "@/components/home/ServicesGrid";
 import { FeaturedFleet, SHOWCASE_COUNT } from "@/components/home/FeaturedFleet";
 import { HowItWorks } from "@/components/home/HowItWorks";
-import { WhyUs } from "@/components/home/WhyUs";
 import { FaqPreview } from "@/components/home/FaqPreview";
 import { JsonLd } from "@/components/common/JsonLd";
 import { itemListLd } from "@/lib/seo";
@@ -39,7 +38,6 @@ export default async function HomePage() {
       <BrowseByType />
       <ServicesGrid />
       <HowItWorks />
-      <WhyUs />
       <FaqPreview />
     </>
   );
